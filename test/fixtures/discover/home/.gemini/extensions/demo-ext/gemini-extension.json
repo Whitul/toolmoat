@@ -1,0 +1,12 @@
+{
+  "name": "demo-ext",
+  "version": "1.0.0",
+  "mcpServers": {
+    "ext-server": {
+      "command": "node",
+      "args": [
+        "server.js"
+      ]
+    }
+  }
+}

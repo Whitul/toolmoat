@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(npm test:*)",
+      "Read",
+      "WebFetch(domain:docs.example.com)",
+      "mcp__github__get_issue"
+    ],
+    "deny": ["Read(./.env)", "Read(./secrets/**)"],
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": ["../shared-lib"]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format.sh", "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}

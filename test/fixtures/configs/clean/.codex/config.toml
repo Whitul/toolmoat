@@ -1,0 +1,16 @@
+model = "gpt-5-codex"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[mcp_servers.time]
+command = "uvx"
+args = ["mcp-server-time==0.6.2"]
+
+[mcp_servers.docs]
+url = "https://docs.example.invalid/mcp"
+bearer_token_env_var = "DOCS_TOKEN"
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github@2025.4.8"]
+env = { GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_TOKEN}" }

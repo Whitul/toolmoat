@@ -1,0 +1,59 @@
+{
+  "name": "toolmoat",
+  "version": "0.1.0",
+  "description": "Local-first security scanner and runtime firewall for AI agent skills, plugins, hooks and MCP servers. No account, no cloud, no telemetry.",
+  "author": "Whitul",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Whitul/toolmoat.git"
+  },
+  "homepage": "https://github.com/Whitul/toolmoat#readme",
+  "bugs": {
+    "url": "https://github.com/Whitul/toolmoat/issues"
+  },
+  "type": "module",
+  "bin": {
+    "toolmoat": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "agent-skills",
+    "claude-code",
+    "security",
+    "scanner",
+    "prompt-injection",
+    "tool-poisoning",
+    "supply-chain",
+    "sarif"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

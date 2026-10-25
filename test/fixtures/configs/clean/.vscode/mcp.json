@@ -1,0 +1,34 @@
+{
+  // Workspace MCP servers; secrets come from VS Code's input prompt.
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "github-token",
+      "description": "GitHub personal access token",
+      "password": true
+    }
+  ],
+  "servers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${input:github-token}"
+      }
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@playwright/mcp@0.0.41"],
+      "env": { "API_TOKEN": "${env:PLAYWRIGHT_TOKEN}" }
+    },
+    "dev": {
+      "type": "http",
+      "url": "http://app.localhost:5173/mcp"
+    },
+    "ipv6": {
+      "type": "sse",
+      "url": "http://[::1]:9000/sse"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+[project]
+name = "mcp-demo"
+version = "0.1.0"
+dependencies = [
+  "mcp>=1.2",
+  "helper @ git+https://git.example.invalid/team/helper.git@main",
+  "pinned @ git+https://git.example.invalid/team/pinned.git@3f2c1a9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+]
+
+[project.optional-dependencies]
+extras = ["blob @ https://files.example.invalid/blob-1.0.tar.gz"]

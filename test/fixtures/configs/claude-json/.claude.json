@@ -1,0 +1,34 @@
+{
+  "numStartups": 42,
+  "autoUpdates": true,
+  "mcpServers": {
+    "context-docs": {
+      "type": "http",
+      "url": "https://mcp.docs.example.invalid/mcp"
+    }
+  },
+  "projects": {
+    "/Users/demo/code/webapp": {
+      "allowedTools": [],
+      "hasTrustDialogAccepted": true,
+      "mcpServers": {
+        "db": {
+          "type": "stdio",
+          "command": "uvx",
+          "args": ["--from", "mcp-db-tools", "mcp-db"],
+          "env": {
+            "DB_HOST": "localhost",
+            "DB_PASSWORD": "hunter2-prod-db"
+          }
+        },
+        "internal-wiki": {
+          "type": "http",
+          "url": "http://wiki.corp-tools.example/mcp"
+        }
+      }
+    },
+    "/Users/demo/code/scratch": {
+      "mcpServers": {}
+    }
+  }
+}

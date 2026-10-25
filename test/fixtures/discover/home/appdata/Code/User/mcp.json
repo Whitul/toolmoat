@@ -1,0 +1,23 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "api-key",
+      "description": "API key",
+      "password": true
+    }
+  ],
+  "servers": {
+    "fetch": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
+    "remote-api": {
+      "type": "http",
+      "url": "https://api.example.invalid/mcp"
+    }
+  }
+}

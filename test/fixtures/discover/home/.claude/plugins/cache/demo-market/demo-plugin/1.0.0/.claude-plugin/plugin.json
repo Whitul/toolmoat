@@ -1,0 +1,5 @@
+{
+  "name": "demo-plugin",
+  "version": "1.0.0",
+  "description": "A demo plugin with a command, a hook, a skill and an MCP server."
+}

@@ -1,0 +1,78 @@
+name: toolmoat scan
+description: Scan AI agent skills, plugins, hooks and MCP configs in your repository for malicious or risky content. Runs locally on the runner, no account needed.
+author: toolmoat contributors
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  paths:
+    description: Space-separated files or directories to scan.
+    default: .
+  fail-on:
+    description: Fail the step when a finding has at least this severity (critical, high, medium, low, info or none).
+    default: high
+  min-severity:
+    description: Hide findings below this severity in the reports.
+    default: low
+  upload-sarif:
+    description: Upload results to GitHub code scanning. Needs the security-events write permission.
+    default: 'true'
+  sarif-file:
+    description: Where to write the SARIF report.
+    default: toolmoat.sarif
+
+outputs:
+  exit-code:
+    description: 0 when nothing reached fail-on, 1 when something did.
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Build toolmoat
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --ignore-scripts --no-audit --no-fund && npm run build
+
+    # Inputs reach the scripts through environment variables, never through
+    # direct ${{ }} interpolation, so a crafted input cannot inject shell code.
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        TOOLMOAT_CLI: ${{ github.action_path }}/dist/cli.js
+        SCAN_PATHS: ${{ inputs.paths }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+        SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        read -r -a paths <<< "$SCAN_PATHS"
+        node "$TOOLMOAT_CLI" scan "${paths[@]}" --format sarif --output "$SARIF_FILE" --min-severity "$MIN_SEVERITY" --fail-on none
+        set +e
+        node "$TOOLMOAT_CLI" scan "${paths[@]}" --format markdown --min-severity "$MIN_SEVERITY" --fail-on "$FAIL_ON" >> "$GITHUB_STEP_SUMMARY"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [ "$code" -gt 1 ]; then exit "$code"; fi
+
+    - name: Upload SARIF
+      if: ${{ always() && inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: toolmoat
+
+    - name: Fail on findings
+      if: ${{ steps.scan.outputs.exit-code == '1' }}
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        echo "toolmoat found issues at or above '$FAIL_ON'. See the job summary or the code scanning alerts."
+        exit 1

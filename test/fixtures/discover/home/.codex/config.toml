@@ -1,0 +1,18 @@
+model = "o4-mini"
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+
+[mcp_servers.context7.env]
+LOG_LEVEL = "debug"
+
+[mcp_servers."local tools"]
+command = 'C:\tools\mcp.exe'
+args = [
+  "--stdio", # talk over stdin and stdout
+  "--verbose",
+]
+
+[mcp_servers.remote-docs]
+url = "https://docs.example.invalid/mcp"

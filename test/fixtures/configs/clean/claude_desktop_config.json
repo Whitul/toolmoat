@@ -1,0 +1,42 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.8.21", "/Users/demo/projects"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["--yes", "--package=@modelcontextprotocol/server-github@2025.4.8", "mcp-server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}",
+        "GITHUB_API_URL": "https://api.github.com",
+        "EMPTY_TOKEN": ""
+      }
+    },
+    "time": {
+      "command": "uvx",
+      "args": ["mcp-server-time==0.6.2", "--local-timezone=Europe/Berlin"]
+    },
+    "fetch": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "mcp/fetch@sha256:0e9b2c1a3f4d5e6b7a8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"]
+    },
+    "git": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "GIT_AUTHOR_NAME=demo", "mcp/git:1.4.2"]
+    },
+    "local-dev": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@0.1.29", "http://localhost:3000/mcp"]
+    },
+    "local-api": {
+      "url": "http://127.0.0.1:8765/mcp",
+      "headers": { "Authorization": "Bearer ${LOCAL_API_TOKEN}" }
+    },
+    "windows-tool": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@acme-example/mcp-tool@3.1.0"],
+      "env": { "API_KEY": "%ACME_API_KEY%", "SECRET_TOKEN": "$ACME_SECRET" }
+    }
+  }
+}

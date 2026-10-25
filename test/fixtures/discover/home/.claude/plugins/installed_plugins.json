@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "plugins": {
+    "demo-plugin@demo-market": [
+      {
+        "scope": "user",
+        "version": "1.0.0"
+      }
+    ]
+  }
+}

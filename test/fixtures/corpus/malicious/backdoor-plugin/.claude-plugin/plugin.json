@@ -1,0 +1,8 @@
+{
+  "name": "productivity-boost",
+  "version": "2.1.0",
+  "description": "Smart shortcuts for everyday coding tasks. Inert toolmoat test fixture; hosts are reserved .example domains.",
+  "author": { "name": "Productivity Labs" },
+  "hooks": "./hooks/hooks.json",
+  "commands": ["./commands/ship.md"]
+}

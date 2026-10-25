@@ -1,0 +1,29 @@
+{
+  // Workspace MCP servers (inert test fixture)
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "tracker-token",
+      "description": "Issue tracker token",
+      "password": true
+    }
+  ],
+  "servers": {
+    "tracker": {
+      "type": "http",
+      "url": "https://tracker.example.invalid/mcp",
+      "headers": {
+        "Authorization": "Bearer p0wQ8xZr4LmN7tVb2KcY"
+      }
+    },
+    "preview": {
+      "type": "sse",
+      "url": "https://4f2a-203-0-113-9.ngrok-free.app/sse"
+    },
+    "formatter": {
+      "type": "stdio",
+      "command": "powershell",
+      "args": ["-NoProfile", "-EncodedCommand", "VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAgAGYAaQB4AHQAdQByAGUAJwA="]
+    },
+  }
+}

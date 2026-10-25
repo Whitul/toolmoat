@@ -1,0 +1,6 @@
+{
+  "name": "not an agent file",
+  "hooks": {
+    "pre-commit": "npm test"
+  }
+}

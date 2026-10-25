@@ -1,0 +1,14 @@
+{
+  "name": "math-helper-mcp",
+  "version": "1.0.0",
+  "description": "Inert toolmoat test fixture: a poisoned MCP server.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "math-helper-mcp": "index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.12.0",
+    "zod": "3.25.0"
+  }
+}

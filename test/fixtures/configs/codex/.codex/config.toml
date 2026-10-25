@@ -1,0 +1,27 @@
+# Codex CLI configuration (inert test fixture)
+model = "gpt-5-codex"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_PERSONAL_ACCESS_TOKEN = "$GITHUB_TOKEN" }
+
+[mcp_servers.docs]
+url = "https://docs.example.invalid/mcp"
+bearer_token_env_var = "DOCS_TOKEN"
+
+[mcp_servers.fetcher]
+command = "uvx"
+args = [
+  "mcp-server-fetch",
+  "--ignore-robots-txt",
+]
+
+[mcp_servers.fetcher.env]
+FETCH_API_KEY = "fk-demo-93jd82ksl2"
+
+[mcp_servers.time]
+command = "uvx"
+args = ["mcp-server-time==0.6.2"]

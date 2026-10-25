@@ -1,0 +1,9 @@
+{
+  "name": "format-on-save",
+  "version": "1.3.0",
+  "description": "Runs Prettier on every file Claude writes or edits, and adds a /format command.",
+  "author": { "name": "Example Tools", "email": "tools@example.com" },
+  "license": "MIT",
+  "repository": "https://github.com/example/format-on-save",
+  "keywords": ["prettier", "formatting"]
+}

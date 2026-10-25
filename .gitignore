@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.log
+*.sarif
+.toolmoat-test-home/
+.DS_Store
+Thumbs.db

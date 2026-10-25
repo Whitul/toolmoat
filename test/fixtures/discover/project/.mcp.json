@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "project-db": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@example/db-mcp"
+      ]
+    }
+  }
+}

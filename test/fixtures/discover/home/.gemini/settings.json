@@ -1,0 +1,12 @@
+{
+  "theme": "Default",
+  "mcpServers": {
+    "weather": {
+      "command": "node",
+      "args": [
+        "/home/dev/weather/index.js"
+      ],
+      "cwd": "/home/dev/weather"
+    }
+  }
+}

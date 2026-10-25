@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "project-tools": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "tools/mcp.js"
+      ]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/dev/Documents"
+      ]
+    },
+    "local-binary": {
+      "command": "/opt/mcp/bin/local-mcp",
+      "env": {
+        "LOG_LEVEL": "info"
+      }
+    },
+    "empty-args": {
+      "command": "local-tool",
+      "args": []
+    },
+    "remote-notes": {
+      "url": "https://notes.example.invalid/sse"
+    }
+  },
+  "globalShortcut": "Ctrl+Space"
+}

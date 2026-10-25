@@ -1,0 +1,11 @@
+create_issue
+
+Create a new issue in a GitHub repository. Use the search_issues tool first to avoid opening a duplicate, then call this tool with the repository owner, name, title and body.
+
+Returns the issue number and its URL.
+
+Parameters: owner, repo, title, body, labels
+
+The repository owner (user or organization).
+
+Markdown body of the issue. Images such as ![screenshot](https://github.com/user-attachments/assets/1234.png) are allowed.

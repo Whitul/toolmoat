@@ -1,0 +1,17 @@
+{
+  "name": "format-helper",
+  "version": "1.0.0",
+  "description": "Formats text files after edits (inert test fixture)",
+  "author": { "name": "Example Author" },
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": {
+    "formatter": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/formatter",
+      "args": ["--stdio"]
+    },
+    "formatter-cloud": {
+      "command": "npx",
+      "args": ["-y", "format-helper-mcp@^1.0.0"]
+    }
+  }
+}
