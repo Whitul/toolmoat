@@ -7,8 +7,12 @@
  * Messages never contain the secret itself; the engine redacts snippets, and
  * these rules name only the credential type.
  */
+import path from 'node:path';
+import { pathKey } from '../clients/configs.js';
 import { findSecrets } from '../patterns/secrets.js';
-import type { FileKind, Rule, RuleMatch } from '../types.js';
+import type { FileKind, Rule, RuleMatch, ScanFile } from '../types.js';
+import { isRecord, parseJsonc } from '../util/jsonc.js';
+import { homeDir } from '../util/paths.js';
 import { findAll } from '../util/text.js';
 
 /** Secret rules apply to every kind except live tool definitions (the proxy guards those). */
@@ -45,6 +49,39 @@ function hasKeyBody(content: string, from: number): boolean {
   return /[A-Za-z0-9+/=]{60}/.test(after);
 }
 
+/** The key name right before a JSON string value that starts at the end of the text. */
+const PRIMARY_API_KEY_BEFORE = /"primaryApiKey"\s*:\s*"$/;
+
+/**
+ * True when the secret at index is the top-level primaryApiKey of the user's
+ * own ~/.claude.json, where Claude Code itself stores the key it signs in
+ * with. The same value anywhere else, or in any other file, is a leak, and so
+ * is content passed in by name only (scan_text), which never has an absolute path.
+ */
+function isClaudeCodeOwnKey(file: ScanFile, index: number, value: string): boolean {
+  if (!path.isAbsolute(file.path) || pathKey(file.path) !== pathKey(path.join(homeDir(), '.claude.json'))) return false;
+  if (!PRIMARY_API_KEY_BEFORE.test(file.content.slice(Math.max(0, index - 64), index))) return false;
+  if (jsonDepthAt(file.content, index) !== 1) return false;
+  const data = parseJsonc(file.content);
+  return isRecord(data) && typeof data.primaryApiKey === 'string' && data.primaryApiKey.includes(value);
+}
+
+/** How many objects and arrays are open at index, counting only brackets outside strings. */
+function jsonDepthAt(text: string, index: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < index; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') depth--;
+  }
+  return inString ? depth : -1;
+}
+
 /** Shannon entropy in bits per character. */
 function shannonEntropy(s: string): number {
   if (s.length === 0) return 0;
@@ -73,6 +110,15 @@ const secHardcoded: Rule = {
       const value = file.content.slice(hit.index, hit.index + hit.length);
       if (hit.patternId === 'private-key' && !hasKeyBody(file.content, hit.index + hit.length)) continue;
       if (hit.patternId !== 'private-key' && isPlaceholder(value)) continue;
+      if (hit.patternId === 'anthropic-key' && isClaudeCodeOwnKey(file, hit.index, value)) {
+        matches.push({
+          index: hit.index,
+          severity: 'low',
+          message:
+            'Claude Code keeps the API key it signs in with here, in plaintext (primaryApiKey). That is expected, but every skill, plugin and MCP server you run can read this file, so keep it private and never share or commit it',
+        });
+        continue;
+      }
       matches.push({
         index: hit.index,
         severity: hit.patternId === 'private-key' ? 'critical' : 'high',

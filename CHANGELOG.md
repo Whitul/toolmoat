@@ -8,6 +8,7 @@
 - Dockerfile for MCP hosts that run servers in a container. See the README for what to mount.
 - Scanning is safer on odd files: reads are capped at the size limit even when a file grows or reports a wrong size, FIFOs and devices are never opened as plugin manifests, and file links that lead to a network share are not followed.
 - Reports escape Unicode line and paragraph separators and C1 control characters, and mask passwords embedded in URLs (`https://user:****@host`).
+- `TM-SEC-001` reports the API key Claude Code itself keeps in `~/.claude.json` (top-level `primaryApiKey`) as low instead of high, since every Claude Code user signed in with an API key has it. The same key anywhere else, in any other file or in content passed to `scan_text`, is still high.
 
 ## 0.1.0
 
