@@ -45,6 +45,15 @@ jobs:
       - run: node dist/cli.js --version
       - run: node dist/cli.js rules --format json > /dev/null
       - run: node dist/cli.js scan test/fixtures/corpus/benign --fail-on high
+      - name: MCP server answers initialize and tools/list
+        shell: bash
+        run: |
+          init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
+          list='{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+          out=$(printf '%s\n%s\n' "$init" "$list" | node dist/cli.js mcp)
+          echo "$out"
+          grep -q '"serverInfo"' <<< "$out"
+          grep -q '"scan_path"' <<< "$out"
 
   dogfood:
     name: Scan the test corpus with the action
@@ -59,3 +68,21 @@ jobs:
         with:
           paths: test/fixtures/corpus/benign
           upload-sarif: 'false'
+
+  docker:
+    name: Docker image for MCP hosts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t toolmoat-mcp .
+      - name: Container answers initialize and tools/list
+        shell: bash
+        run: |
+          init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
+          list='{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+          out=$(printf '%s\n%s\n' "$init" "$list" | docker run -i --rm toolmoat-mcp)
+          echo "$out"
+          grep -q '"serverInfo"' <<< "$out"
+          grep -q '"scan_path"' <<< "$out"

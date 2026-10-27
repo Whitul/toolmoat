@@ -40,16 +40,17 @@ export function truncate(text: string, max = 160): string {
 }
 
 /**
- * Makes text safe to print on one terminal line: control and invisible
- * characters become visible escapes such as ​, so hidden payloads show up
- * in reports instead of being smuggled into them.
+ * Makes text safe to print on one terminal line: control (C0 and C1),
+ * line-separator and invisible characters become visible escapes such as
+ * ​, so hidden payloads show up in reports instead of being smuggled
+ * into them.
  */
 export function printable(text: string): string {
   let out = '';
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
     if (ch === '\t') out += ' ';
-    else if (isInvisible(code) || code < 0x20 || code === 0x7f) {
+    else if (isInvisible(code) || code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029) {
       out += code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, '0')}`;
     } else out += ch;
   }

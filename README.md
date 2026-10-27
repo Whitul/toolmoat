@@ -29,6 +29,7 @@ toolmoat checks all of that **on your machine**, before and while your agent run
 |---|---|
 | 🔍 **`toolmoat scan`** | Static analysis of skills (`SKILL.md` and bundled scripts), Claude Code plugins, commands, agents, hooks and permissions, MCP client configs (Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Codex, Gemini CLI) and MCP server source. Finds prompt injection, hidden Unicode, download-and-execute installers, credential theft, exfiltration endpoints, persistence, unpinned `npx` servers, plaintext secrets and over-broad permissions. Output as text, JSON, SARIF or Markdown. |
 | 🛡️ **`toolmoat proxy`** | A runtime firewall between your MCP client and each server. It pins every tool definition in a lockfile and blocks a tool the moment its description or schema changes (rug pulls like Deadbugz). It scans live tool descriptions and tool output for injected instructions, stops tool calls that would send your API keys out, and keeps an audit log. |
+| 🤖 **`toolmoat mcp`** | Runs toolmoat as an MCP server, so your agent can scan a skill, plugin or MCP server itself before it installs or enables it. Every tool is read-only and offline. |
 | 🔁 **`toolmoat wrap`** | One command routes every stdio MCP server in your client configs through the proxy. `unwrap` restores them exactly. |
 | ⚙️ **GitHub Action** | Scans a repository's agent files on every pull request and reports to GitHub code scanning. |
 
@@ -75,7 +76,7 @@ Here is what a ClawHavoc-style skill looks like to toolmoat (an inert sample fro
 
 ```text
 $ toolmoat scan clawhavoc-skill
-toolmoat 0.1.0 scanned 2 files in 1 target (clawhavoc-skill) in 92 ms
+toolmoat 0.2.0 scanned 2 files in 1 target (clawhavoc-skill) in 92 ms
 
 skill:clawhavoc-skill (4 findings)
   CRITICAL  TM-OBF-001  Decode-and-execute
@@ -99,6 +100,82 @@ How to fix
     Download to a file, review it, pin a checksum, then run the reviewed copy.
 
 4 findings: 2 critical, 2 high
+```
+
+## Use it from your agent
+
+`toolmoat mcp` runs toolmoat as a stdio MCP server. Your agent can then check a skill, plugin or MCP server before it installs or enables it, and audit what is already set up.
+
+Claude Code:
+
+```bash
+claude mcp add toolmoat -- npx -y toolmoat@0.2.0 mcp
+# or, with a global install
+claude mcp add toolmoat -- toolmoat mcp
+```
+
+Claude Desktop, Cursor and other clients:
+
+```json
+{
+  "mcpServers": {
+    "toolmoat": {
+      "command": "npx",
+      "args": ["-y", "toolmoat@0.2.0", "mcp"]
+    }
+  }
+}
+```
+
+On native Windows, `npx` is a `.cmd` script, so clients need `cmd /c` to start it:
+
+```bash
+claude mcp add toolmoat -- cmd /c npx -y toolmoat@0.2.0 mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "toolmoat": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "toolmoat@0.2.0", "mcp"]
+    }
+  }
+}
+```
+
+Keep the version pinned. An unpinned `npx` server is exactly what `TM-SUP-001` warns about.
+
+| Tool | What it does |
+|---|---|
+| `scan_path` | Scans one file or folder (a skill, plugin, hook script, MCP server source or MCP config) |
+| `scan_installed` | Scans the same places as `toolmoat scan` with no arguments |
+| `scan_text` | Scans content passed inline, such as a SKILL.md or a tool description, without writing it to disk |
+| `list_rules` | Lists the detection rules, optionally filtered by severity or category |
+| `list_pins` | Shows the servers pinned by `toolmoat proxy` and any pending tool changes |
+
+Things to ask your agent:
+
+> Clone https://github.com/someone/cool-skill into a temp folder and run toolmoat's scan_path on it. Only install it if there are no high or critical findings.
+
+> Use toolmoat to audit my installed skills, plugins and MCP servers and summarise anything high or critical.
+
+Every tool is read-only and offline: the server never writes files, never makes network requests and never runs the code it scans. It also ignores any `.toolmoatignore`, since the folder being scanned may be the untrusted download. There is deliberately no tool to approve pins or change configs, so an agent cannot approve its own tool changes. Approvals stay with you, in a terminal, with `toolmoat approve`.
+
+A few details:
+
+- `scan_path` only scans local files and folders. Network shares and device paths (on Windows, anything starting with `\\` or `//`, and links that point there) are refused before they are touched, since opening one can send your Windows credentials to another machine.
+- Tool calls run one at a time. `ping` and other requests are answered while a scan runs, and a cancelled scan gets no response.
+- Results carry a readable report as text and the same data as `structuredContent`. Names and snippets taken from scanned files are escaped and quoted, and recognised secrets and passwords in URLs are masked.
+- If you also run toolmoat itself behind `toolmoat proxy`, expect the proxy to warn that scan results look like prompt injection (they quote what was found), and to block a `scan_text` call whose content holds a credential. Scan such a file with `scan_path` instead.
+
+### Docker
+
+The `Dockerfile` builds an image that runs `toolmoat mcp`, for MCP hosts and registries that start servers in a container. A container only sees what is mounted into it: `scan_path` works on mounted folders, and `scan_installed` and `list_pins` report nothing unless your home config is mounted too. Mount read-only:
+
+```bash
+docker build -t toolmoat .
+docker run -i --rm -v "$PWD:/work:ro" -w /work toolmoat
 ```
 
 ## Catching a rug pull
@@ -142,7 +219,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Whitul/toolmoat@v0.1.0
+      - uses: Whitul/toolmoat@v0.2.0
         with:
           paths: .claude skills .mcp.json
           fail-on: high
@@ -174,6 +251,7 @@ toolmoat wrap   [--client <name>] [--config <file>] [--dry-run]
 toolmoat unwrap [--client <name>] [--config <file>] [--dry-run]
 toolmoat pins | diff <server> | approve <server> [--tool <name>] [--reset]
 toolmoat rules [--format text|json|markdown]
+toolmoat mcp                  Run as a stdio MCP server with read-only scan tools
 ```
 
 Exit codes: `0` nothing at or above `--fail-on`, `1` findings at or above it, `2` usage or runtime error.

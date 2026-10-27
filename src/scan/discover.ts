@@ -4,7 +4,7 @@ import type { ClientConfigLocation } from '../clients/configs.js';
 import { CLIENT_CONFIGS, pathKey } from '../clients/configs.js';
 import type { FileKind, ScanFile, SkippedFile } from '../types.js';
 import { isRecord, parseJsonc } from '../util/jsonc.js';
-import { expandHome, homeDir } from '../util/paths.js';
+import { expandHome, homeDir, linksOffMachine } from '../util/paths.js';
 import { printable, truncate } from '../util/text.js';
 import type { IgnoreConfig } from './ignore.js';
 import { isPathIgnored } from './ignore.js';
@@ -36,6 +36,9 @@ const DEFAULT_MAX_FILE_BYTES = 2 * MIB;
 const DEFAULT_MAX_FILES = 20_000;
 const READ_CONCURRENCY = 16;
 const BINARY_SNIFF_BYTES = 8192;
+/** O_NONBLOCK where the platform has it, so opening a FIFO never blocks. It changes nothing for regular files. */
+const OPEN_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0);
+const OFF_MACHINE = 'links to a network or device path, not followed';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', 'venv', '__pycache__', '.tox', '.mypy_cache', '.pytest_cache', '.next', '.turbo', '.cache']);
 const PROMPT_DIRS = new Set(['commands', 'agents', 'rules', 'prompts']);
@@ -202,6 +205,8 @@ function rootLabel(abs: string): string {
 
 function collectRoot(root: Root, state: State): void {
   if (state.capped) return;
+  // A path the user typed may be a share on purpose (scan_path in MCP mode refuses those itself); a default location never is.
+  if (!root.explicit && linksOffMachine(root.abs)) return;
   let stat: fs.Stats;
   try {
     stat = fs.statSync(root.abs);
@@ -266,6 +271,10 @@ function walk(root: Root, base: DirContext, state: State): void {
 }
 
 function visitLink(abs: string, name: string, ctx: DirContext, root: Root, depth: number, subdirs: PendingDir[], state: State): void {
+  if (linksOffMachine(abs)) {
+    if (kindFromName(abs, ctx) !== null) state.skipped.push({ path: displayPathFor(abs, state), reason: OFF_MACHINE });
+    return;
+  }
   let stat: fs.Stats;
   try {
     stat = fs.statSync(abs);
@@ -313,15 +322,10 @@ function childContext(ctx: DirContext, name: string): DirContext {
 
 /** The plugin name from dir/.claude-plugin/plugin.json, the directory name when it has none, or null when there is no manifest. */
 function pluginName(dir: string): string | null {
-  const manifest = path.join(dir, '.claude-plugin', 'plugin.json');
-  let text: string;
-  try {
-    if (fs.statSync(manifest).size > MIB) return path.basename(dir);
-    text = fs.readFileSync(manifest, 'utf8');
-  } catch {
-    return null;
-  }
-  const data = parseJsonc(text);
+  const manifest = readRegularFileSync(path.join(dir, '.claude-plugin', 'plugin.json'), MIB);
+  if (manifest === null) return null;
+  if (manifest === 'too large') return path.basename(dir);
+  const data = parseJsonc(manifest.toString('utf8'));
   const name = isRecord(data) && typeof data.name === 'string' ? truncate(printable(data.name.trim()), 80) : '';
   return name || path.basename(dir);
 }
@@ -353,8 +357,72 @@ function contextAbove(dir: string, promptLevels: number, includeSelf = false): D
   return ctx;
 }
 
+/** Uses lstat, so a SKILL.md that is a link is never followed just to see whether it exists. */
 function hasSkillFile(dir: string): boolean {
-  return fs.existsSync(path.join(dir, 'SKILL.md')) || fs.existsSync(path.join(dir, 'skill.md'));
+  return lexists(path.join(dir, 'SKILL.md')) || lexists(path.join(dir, 'skill.md'));
+}
+
+function lexists(file: string): boolean {
+  try {
+    fs.lstatSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads a regular file of at most max bytes without following links off this
+ * machine. Returns 'too large' when it is bigger, and null when it is missing,
+ * unreadable or not a regular file (a FIFO, device, socket or directory).
+ */
+function readRegularFileSync(file: string, max: number): Buffer | 'too large' | null {
+  if (linksOffMachine(file)) return null;
+  let fd: number;
+  try {
+    fd = fs.openSync(file, OPEN_FLAGS);
+  } catch {
+    return null;
+  }
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return null;
+    if (stat.size > max) return 'too large';
+    let buffer = Buffer.allocUnsafe(stat.size + 1);
+    let total = 0;
+    for (;;) {
+      if (total === buffer.length) {
+        if (total > max) return 'too large';
+        buffer = Buffer.concat([buffer], Math.min(buffer.length * 2, max + 1));
+      }
+      const read = fs.readSync(fd, buffer, total, buffer.length - total, total);
+      if (read === 0) return buffer.subarray(0, total);
+      total += read;
+    }
+  } catch {
+    return null;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Reads at most max bytes from an open file, by position. Returns null when
+ * there is more, so a file that grows, or reports a wrong size, can never be
+ * read without bound.
+ */
+async function readUpTo(handle: fs.promises.FileHandle, size: number, max: number): Promise<Buffer | null> {
+  let buffer = Buffer.allocUnsafe(Math.min(size, max) + 1);
+  let total = 0;
+  for (;;) {
+    if (total === buffer.length) {
+      if (total > max) return null;
+      buffer = Buffer.concat([buffer], Math.min(buffer.length * 2, max + 1));
+    }
+    const { bytesRead } = await handle.read(buffer, total, buffer.length - total, total);
+    if (bytesRead === 0) return buffer.subarray(0, total);
+    total += bytesRead;
+  }
 }
 
 function addCandidate(abs: string, ctx: DirContext, root: Root, state: State): void {
@@ -387,21 +455,24 @@ async function load(candidate: Candidate, state: State): Promise<ScanFile | Skip
 
   let handle: fs.promises.FileHandle;
   try {
-    handle = await fs.promises.open(abs, 'r');
+    handle = await fs.promises.open(abs, OPEN_FLAGS);
   } catch (error) {
     return skip(`unreadable (${errorCode(error)})`);
   }
   let buffer: Buffer;
   try {
-    const { size } = await handle.stat();
+    const stats = await handle.stat();
+    if (!stats.isFile()) return skip('not a regular file');
+    const { size } = stats;
     // Extensionless files are only scripts with a shebang; most are licences, Makefiles or binaries.
     if (byContent && extensionless && (await readHead(handle, 2)) !== '#!') return null;
-    if (size > limit) {
+    const read = size > limit ? null : await readUpTo(handle, size, limit);
+    if (read === null) {
       // Oversized generic JSON is data, not something an agent loads by that name.
       if (byContent && !extensionless) return null;
       return skip(`larger than ${formatBytes(limit)}`);
     }
-    buffer = await handle.readFile();
+    buffer = read;
   } catch (error) {
     return skip(`unreadable (${errorCode(error)})`);
   } finally {
@@ -498,12 +569,8 @@ export function classifyFile(absPath: string, content?: string): FileKind | null
 }
 
 function readSmallText(file: string): string | null {
-  try {
-    if (fs.statSync(file).size > DEFAULT_MAX_FILE_BYTES) return null;
-    return decodeText(fs.readFileSync(file));
-  } catch {
-    return null;
-  }
+  const buffer = readRegularFileSync(file, DEFAULT_MAX_FILE_BYTES);
+  return buffer === null || buffer === 'too large' ? null : decodeText(buffer);
 }
 
 function kindFromName(absPath: string, ctx: DirContext): NameKind | null {

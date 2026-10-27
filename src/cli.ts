@@ -44,6 +44,10 @@ const COMMANDS: Record<string, CommandEntry> = {
     summary: 'List every detection rule',
     load: () => import('./commands/rules.js'),
   },
+  mcp: {
+    summary: 'Run toolmoat as an MCP server so an agent can scan skills, plugins and MCP configs itself',
+    load: () => import('./commands/mcp.js'),
+  },
 };
 
 function usage(): string {

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -346,5 +347,22 @@ describe('discover and symbolic links', () => {
     } finally {
       setHome(home);
     }
+  });
+});
+
+describe('discover and special files', () => {
+  it('never reads a FIFO or device through a plugin manifest or file link', async (ctx) => {
+    if (process.platform === 'win32' || !fs.existsSync('/dev/zero')) ctx.skip();
+    const root = path.join(tmp, 'special');
+    write(root, 'plugin/skills/s/SKILL.md', '# Skill\n');
+    fs.mkdirSync(path.join(root, 'plugin', '.claude-plugin'), { recursive: true });
+    const fifo = path.join(root, 'fifo');
+    if (spawnSync('mkfifo', [fifo]).status !== 0) ctx.skip();
+    fs.symlinkSync('/dev/zero', path.join(root, 'plugin', '.claude-plugin', 'plugin.json'));
+    fs.symlinkSync(fifo, path.join(root, 'plugin', 'run.sh'));
+    const started = Date.now();
+    const result = await discover({ paths: [path.join(root, 'plugin')], useDefaults: false, cwd: root });
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(result.files.map((f) => f.displayPath)).toEqual(['plugin/skills/s/SKILL.md']);
   });
 });

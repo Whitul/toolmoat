@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+dist
+coverage
+test
+examples
+.toolmoat-test-home
+*.log
+*.sarif
+*.tgz
+.DS_Store
+Thumbs.db
+.env
+.env.*

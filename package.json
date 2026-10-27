@@ -1,6 +1,6 @@
 {
   "name": "toolmoat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local-first security scanner and runtime firewall for AI agent skills, plugins, hooks and MCP servers. No account, no cloud, no telemetry.",
   "author": "Whitul",
   "repository": {

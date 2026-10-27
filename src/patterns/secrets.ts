@@ -73,8 +73,24 @@ function dropOverlaps(sorted: SecretHit[]): SecretHit[] {
   return out;
 }
 
-/** Keeps the first 4 characters of each secret so a reader can recognise it, and masks the rest. */
+/**
+ * Keeps the first 4 characters of each secret so a reader can recognise it,
+ * and masks the rest, plus any password in a URL's user info.
+ */
 export function redactSecrets(text: string): string {
+  return redactUrlPasswords(redactPatterns(text));
+}
+
+/** The password in a URL's user info (scheme://user:password@host). Bounded repetition keeps it linear-time. */
+const URL_PASSWORD = /\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/?#@]{0,256}:)[^\s/?#@]{1,256}@/gi;
+
+/** Masks passwords embedded in URLs, which match no fixed credential pattern. */
+function redactUrlPasswords(text: string): string {
+  return text.includes('://') ? text.replace(URL_PASSWORD, '$1****@') : text;
+}
+
+/** Keeps the first 4 characters of each pattern-matched secret and masks the rest. */
+function redactPatterns(text: string): string {
   const hits = findSecrets(text, 1000);
   if (hits.length === 0) return text;
   let out = '';

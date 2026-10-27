@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- `toolmoat mcp`: run toolmoat as a stdio MCP server so an agent can scan things itself. Five read-only, offline tools: `scan_path` (a skill, plugin, hook or MCP server before you install it), `scan_installed` (the same locations as `toolmoat scan` with no arguments), `scan_text` (inline content such as a SKILL.md or tool description), `list_rules` and `list_pins`. There is no tool to approve pins, change configs or write files, so an agent cannot approve its own tool changes. No ignore file is read in this mode.
+- In MCP mode, `scan_path` refuses network shares and device paths (UNC paths and named pipes on Windows) before touching them. `ping` is answered while a scan runs, `notifications/cancelled` is honoured, and JSON-RPC batches are accepted for clients on protocol version 2025-03-26.
+- The MCP server is also exported from the package API: `runMcpServer`, `McpServer`, `MCP_TOOLS` and `callTool`.
+- Dockerfile for MCP hosts that run servers in a container. See the README for what to mount.
+- Scanning is safer on odd files: reads are capped at the size limit even when a file grows or reports a wrong size, FIFOs and devices are never opened as plugin manifests, and file links that lead to a network share are not followed.
+- Reports escape Unicode line and paragraph separators and C1 control characters, and mask passwords embedded in URLs (`https://user:****@host`).
+
 ## 0.1.0
 
 First release.
