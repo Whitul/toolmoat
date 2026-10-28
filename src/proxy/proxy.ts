@@ -8,6 +8,7 @@ import { Firewall } from './firewall.js';
 import type { Line } from './framing.js';
 import { LineDecoder } from './framing.js';
 import { redactCommandLine } from './names.js';
+import { localVolatileValues } from './normalize.js';
 import { killServer, planSpawn } from './spawn.js';
 
 export type { ProxyOptions } from './firewall.js';
@@ -47,7 +48,7 @@ export async function runProxy(options: RunProxyOptions): Promise<number> {
   const audit = options.auditPath ? new AuditLog(options.auditPath, options.server, diag) : undefined;
   let firewall: Firewall;
   try {
-    firewall = new Firewall({ ...options, diag, audit });
+    firewall = new Firewall({ ...options, diag, audit, volatile: options.volatile ?? localVolatileValues(options.command) });
   } catch (error) {
     diag(`${errorMessage(error)}. Fix or delete the lockfile; refusing to start '${options.server}' unverified.`);
     await audit?.close();

@@ -12,6 +12,8 @@ import { encodeMessage, idKey, isNotification, isRequest, isResponse, parseLine 
 import type { FindingSummary, PendingReason, ServerEntry } from './lockfile.js';
 import { readLockfile, updateServer } from './lockfile.js';
 import { redactCommandLine, safeText, shellQuote } from './names.js';
+import type { Normalizer, VolatileValues } from './normalize.js';
+import { localVolatileValues, makeNormalizer } from './normalize.js';
 import type { Mode, OnNew, ToolDecision } from './policy.js';
 import { applyDecisions, decideTool, isBlocking, removedTools, summarize } from './policy.js';
 
@@ -35,6 +37,8 @@ export interface ProxyOptions {
   /** Receives one-line diagnostics. Default: stderr with an [toolmoat] prefix. */
   diag?: (message: string) => void;
   now?: () => Date;
+  /** Machine-specific values replaced with placeholders before pinning. Default: this machine's. */
+  volatile?: VolatileValues;
 }
 
 /** What to do with one line read from a peer. */
@@ -81,6 +85,9 @@ export class Firewall {
   private readonly logArgs: boolean;
   private readonly diagSink: (message: string) => void;
   private readonly now: () => Date;
+  private readonly normalize: Normalizer;
+  /** The command line differs from the one in the lockfile when this session started. */
+  private readonly launchChanged: boolean;
 
   private readonly listRequests = new Map<string, { paged: boolean }>();
   private readonly callRequests = new Map<string, string>();
@@ -114,8 +121,10 @@ export class Firewall {
     const diag = options.diag ?? ((message: string) => process.stderr.write(`[toolmoat] ${message}\n`));
     this.diagSink = (message) => diag(safeText(message));
     this.now = options.now ?? (() => new Date());
+    this.normalize = makeNormalizer(options.volatile ?? localVolatileValues());
     this.startEntry = this.readEntry();
     this.entryExists = this.startEntry !== undefined;
+    this.launchChanged = this.startEntry !== undefined && this.startEntry.command !== '' && this.startEntry.command !== this.commandLine;
     this.holdPending(this.startEntry);
   }
 
@@ -364,21 +373,30 @@ export class Firewall {
         continue;
       }
       listed.add(name);
+      // The scanner reads the definition as the model will see it; the pin holds it normalized.
       let definition: ToolDefinition;
+      let normalized: ToolDefinition;
       let hash: string;
+      let legacyHash: string;
       try {
         definition = toolDefinition(item as Record<string, unknown>);
-        hash = fingerprint(definition);
+        normalized = this.normalize(definition);
+        hash = fingerprint(normalized);
+        legacyHash = fingerprint(definition);
       } catch (error) {
         this.reportOnce(`unreadable|${name}`, 'blocked', name, enforce ? 'blocked' : 'warned', `cannot read the definition of tool ${quoted(name)} (${errorMessage(error)}); ${enforce ? 'hiding it' : 'warn mode, passing it through'}`);
         if (!enforce) kept.push(item);
         continue;
       }
+      // A tool still waiting from an earlier session keeps the note it was recorded with.
+      const stored = entry ? getOwn(entry.pending, name) : undefined;
       const decision = decideTool({
         name,
         hash,
-        definition,
+        legacyHash,
+        definition: normalized,
         pinned: entry ? getOwn(entry.tools, name) : undefined,
+        launchChanged: this.launchChanged || (stored?.hash === hash && stored.launchChanged === true),
         firstUse: this.trustOnFirstUse,
         onNew: this.onNew,
         scan: () => scanTool(this.server, definition, this.rules, this.onRuleError),
@@ -444,6 +462,8 @@ export class Firewall {
     let firstUse = 0;
     let held = 0;
     for (const decision of decisions) {
+      // Rewriting an old pin in the normalized form accepts nothing new, so it is not reported.
+      if (decision.action === 'pin' && decision.why === 'repin') continue;
       if (decision.action === 'pin') {
         if (decision.why === 'first-use') firstUse++;
         else this.diag(`${this.label()}: pinned new tool ${quoted(decision.name)} (--on-new allow)`);
@@ -660,7 +680,8 @@ function heldToolMessage(server: string, decision: Extract<ToolDecision, { actio
   const verb = enforce ? 'hid' : 'warn mode, passing through';
   const findings = decision.findings.length > 0 ? ` (${findingsPhrase(decision.findings)})` : '';
   const { diff, approve } = reviewCommands(server, decision.name);
-  return `${verb} tool ${quoted(decision.name)}: ${reasonPhrase(decision.reason)}${findings}. Review: ${diff}; approve: ${approve}`;
+  const launch = decision.launchChanged ? "; the server's command line had also changed since the lockfile recorded it" : '';
+  return `${verb} tool ${quoted(decision.name)}: ${reasonPhrase(decision.reason)}${launch}${findings}. Review: ${diff}; approve: ${approve}`;
 }
 
 /** The text the model gets instead of a tool result when a call to a held tool is refused. */

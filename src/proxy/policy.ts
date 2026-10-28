@@ -11,10 +11,16 @@ export type OnNew = 'block' | 'allow';
 
 export interface ToolInput {
   name: string;
+  /** Fingerprint of the normalized definition (see normalize.ts). */
   hash: string;
+  /** Fingerprint of the definition exactly as served, which is what toolmoat 0.2 and earlier pinned. */
+  legacyHash?: string;
+  /** The normalized definition, as it is stored in the lockfile. */
   definition: ToolDefinition;
   /** The pinned definition for this tool name, if there is one. */
   pinned?: PinnedTool;
+  /** The server's command line differs from the one recorded in the lockfile. Only noted on new tools. */
+  launchChanged?: boolean;
   /** True while the server is being seen for the first time (trust on first use). */
   firstUse: boolean;
   onNew: OnNew;
@@ -31,10 +37,14 @@ interface DecisionBase {
 export type ToolDecision =
   /** The definition matches its pin. */
   | (DecisionBase & { action: 'allow' })
-  /** Not pinned yet and accepted: trust on first use, or --on-new allow. */
-  | (DecisionBase & { action: 'pin'; why: 'first-use' | 'on-new-allow'; warnings: FindingSummary[] })
-  /** Held for human review. */
-  | (DecisionBase & { action: 'block'; reason: PendingReason; findings: FindingSummary[] });
+  /**
+   * Accepted and (re)pinned: trust on first use, --on-new allow, or "repin"
+   * for a pin made from the exact same definition by a version that did not
+   * normalize yet, which only rewrites the pin in the current form.
+   */
+  | (DecisionBase & { action: 'pin'; why: 'first-use' | 'on-new-allow' | 'repin'; warnings: FindingSummary[] })
+  /** Held for human review. legacyHash lets a pending entry from an older version keep its detection time. */
+  | (DecisionBase & { action: 'block'; reason: PendingReason; findings: FindingSummary[]; launchChanged?: boolean; legacyHash?: string });
 
 /**
  * Decides one tool. A tool that matches its pin is allowed without
@@ -46,12 +56,15 @@ export type ToolDecision =
 export function decideTool(input: ToolInput): ToolDecision {
   const base: DecisionBase = { name: input.name, hash: input.hash, definition: input.definition };
   if (input.pinned && input.pinned.hash === input.hash) return { ...base, action: 'allow' };
+  if (input.pinned && input.legacyHash !== undefined && input.pinned.hash === input.legacyHash) return { ...base, action: 'pin', why: 'repin', warnings: [] };
   const findings = summarize(input.scan());
-  if (input.pinned) return { ...base, action: 'block', reason: 'changed', findings };
-  if (findings.some((f) => isBlocking(f))) return { ...base, action: 'block', reason: 'flagged', findings };
+  const legacy = input.legacyHash !== undefined ? { legacyHash: input.legacyHash } : {};
+  if (input.pinned) return { ...base, action: 'block', reason: 'changed', findings, ...legacy };
+  if (findings.some((f) => isBlocking(f))) return { ...base, action: 'block', reason: 'flagged', findings, ...legacy };
   if (input.firstUse) return { ...base, action: 'pin', why: 'first-use', warnings: findings.filter(isWarning) };
   if (input.onNew === 'allow') return { ...base, action: 'pin', why: 'on-new-allow', warnings: findings.filter(isWarning) };
-  return { ...base, action: 'block', reason: 'new', findings };
+  // Only new tools get the note: a changed command line can add tools, but it rarely explains a rewritten description.
+  return { ...base, action: 'block', reason: 'new', findings, ...legacy, ...(input.launchChanged ? { launchChanged: true } : {}) };
 }
 
 /** High and critical findings keep an unpinned tool away from the model. */
@@ -89,7 +102,9 @@ export function applyDecisions(current: ServerEntry | undefined, decisions: read
   entry.command = ctx.command;
   for (const decision of decisions) {
     if (decision.action === 'pin') {
-      setOwn(entry.tools, decision.name, { hash: decision.hash, definition: decision.definition, pinnedAt: ctx.now });
+      // A repin keeps the time the definition was first accepted.
+      const pinnedAt = decision.why === 'repin' ? (getOwn(entry.tools, decision.name)?.pinnedAt ?? ctx.now) : ctx.now;
+      setOwn(entry.tools, decision.name, { hash: decision.hash, definition: decision.definition, pinnedAt });
       delete entry.pending[decision.name];
       dirty = true;
     } else if (decision.action === 'allow') {
@@ -101,12 +116,15 @@ export function applyDecisions(current: ServerEntry | undefined, decisions: read
     } else {
       const existing = getOwn(entry.pending, decision.name);
       if (existing && existing.hash === decision.hash && existing.reason === decision.reason) continue;
+      // An entry an older version recorded under the raw hash is the same definition: rewrite it, keep its time.
+      const same = existing !== undefined && (existing.hash === decision.hash || existing.hash === decision.legacyHash);
       setOwn(entry.pending, decision.name, {
         hash: decision.hash,
         definition: decision.definition,
-        detectedAt: existing?.hash === decision.hash ? existing.detectedAt : ctx.now,
+        detectedAt: same ? existing.detectedAt : ctx.now,
         reason: decision.reason,
         findings: decision.findings,
+        ...(decision.launchChanged ? { launchChanged: true } : {}),
       });
       dirty = true;
     }

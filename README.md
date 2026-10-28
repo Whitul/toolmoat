@@ -204,6 +204,16 @@ toolmoat approve demo      # only if you trust the change
 | A tool call's arguments contain a credential | Refused, with the credential type named | Forwarded, warning |
 | Tool output contains injected instructions | Logged and warned on stderr | Logged and warned |
 
+Tool names, property names and schema keywords such as `type`, `required` and `pattern` are pinned exactly. Some servers write machine-specific values into their tool text, such as the hostname or a home directory. So before a definition is pinned or compared, toolmoat replaces these values with placeholders like `{{hostname}}` and `{{home}}` in the rest of the definition's text (descriptions, titles, defaults):
+
+- your hostname (when it has a digit, hyphen or dot, so it cannot be an ordinary word);
+- your home, working and temp directories, exactly as your system reports them;
+- for servers whose command is `docker`, `podman` or `nerdctl`, 12-character container ids, in descriptions and titles only.
+
+Line endings are unified too. The same server then pins the same on every machine and in every new container, and the tool text in a shared lockfile no longer carries your paths (the server's command line is still recorded as configured). Hostnames and paths are replaced only where they are your machine's own values, so any other change to a definition is still caught. Pins written by toolmoat 0.2 and earlier are converted the first time the server lists the same definition again.
+
+New tools are still held when the server's command line has also changed since the lockfile recorded it (a new `--toolsets` flag, say), and the message and `toolmoat diff` mention the command-line change so you know where to look.
+
 The lockfile lives in `~/.toolmoat/lock.json` by default. Pass `--lock ./toolmoat.lock.json` to keep it in a repository so your team shares the same pins. The audit log (`~/.toolmoat/audit/<server>.jsonl`) records which tools were called and what was decided. It does not store argument values unless you pass `--log-args`, and even then secrets are redacted.
 
 ## GitHub Action
@@ -363,6 +373,7 @@ If you already use Snyk, the two work side by side.
 - Static rules catch known techniques. A determined attacker can phrase instructions in ways no pattern list anticipates, so treat a clean scan as "nothing known found", not as proof of safety.
 - The proxy works with stdio MCP servers. Remote (HTTP) servers cannot be wrapped yet.
 - Trust on first use means the first definition a server presents is pinned. Scan or review a server before its first run.
+- A server that builds its tool list from environment variables (tools that only appear once you add a token, say) looks the same as one adding tools on its own, so those tools are held as new. Approve them once with `toolmoat approve`, or run that server with `--on-new allow`.
 - Pins cover what a server tells the model, not what its code does. A server can keep the same tool descriptions and change its behaviour, so an unchanged pin does not prove an unchanged server.
 - The proxy is not a sandbox. It only sees the MCP messages between your client and the server; the server process still runs with your permissions and can read files or reach the network on its own. Run a server you do not trust in a container or VM as well.
 - The egress guard and secret rules know credential formats, not every secret. A value in an unknown format, or one that is encoded or split up, gets through.

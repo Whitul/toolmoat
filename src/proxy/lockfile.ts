@@ -32,6 +32,8 @@ export interface PendingTool {
   detectedAt: string;
   reason: PendingReason;
   findings: FindingSummary[];
+  /** Held right after the server's command line changed (new flags can add tools legitimately). */
+  launchChanged?: boolean;
 }
 
 export interface ServerEntry {
@@ -120,13 +122,15 @@ function normalizePinned(item: Record<string, unknown>): PinnedTool | undefined 
 function normalizePending(item: Record<string, unknown>): PendingTool | undefined {
   if (typeof item.hash !== 'string' || !isObject(item.definition)) return undefined;
   if (item.reason !== 'changed' && item.reason !== 'new' && item.reason !== 'flagged') return undefined;
-  return {
+  const pending: PendingTool = {
     hash: item.hash,
     definition: item.definition,
     detectedAt: typeof item.detectedAt === 'string' ? item.detectedAt : '',
     reason: item.reason,
     findings: Array.isArray(item.findings) ? (item.findings.filter(isObject) as unknown as FindingSummary[]) : [],
   };
+  if (item.launchChanged === true) pending.launchChanged = true;
+  return pending;
 }
 
 /** Serializes with stable key order so the file diffs cleanly in version control. */

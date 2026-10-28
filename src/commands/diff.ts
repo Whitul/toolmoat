@@ -72,7 +72,8 @@ export async function run(argv: string[]): Promise<number> {
 export function renderPending(entry: ServerEntry, tool: string, c: Palette): string[] {
   const pending = getOwn(entry.pending, tool)!;
   const pinned = getOwn(entry.tools, tool);
-  const out = [`${c.bold(safeText(tool, 100))}  ${c.yellow(pending.reason)}  ${c.dim(`${REASON_TEXT[pending.reason]}, detected ${pending.detectedAt || 'unknown'}`)}`];
+  const launch = pending.launchChanged ? "; the server's command line had also changed" : '';
+  const out = [`${c.bold(safeText(tool, 100))}  ${c.yellow(pending.reason)}  ${c.dim(`${REASON_TEXT[pending.reason]}${launch}, detected ${pending.detectedAt || 'unknown'}`)}`];
   if (pending.findings.length > 0) {
     out.push('  findings:');
     for (const f of pending.findings) {
