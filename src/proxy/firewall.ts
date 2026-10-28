@@ -81,7 +81,7 @@ export class Firewall {
   private readonly lockPath: string;
   private readonly mode: Mode;
   private readonly onNew: OnNew;
-  private readonly allowNew: readonly RegExp[];
+  private readonly allowNew: readonly string[];
   private readonly allowSecrets: ReadonlySet<string>;
   private readonly rules: readonly Rule[];
   private readonly sink: AuditSink | undefined;
@@ -117,7 +117,7 @@ export class Firewall {
     this.lockPath = options.lockPath;
     this.mode = options.mode ?? 'enforce';
     this.onNew = options.onNew ?? 'block';
-    this.allowNew = (options.allowNew ?? []).map(toolPattern);
+    this.allowNew = [...(options.allowNew ?? [])];
     this.allowSecrets = new Set(options.allowSecrets ?? []);
     this.rules = options.rules ?? allRules;
     this.sink = options.audit;
@@ -394,17 +394,18 @@ export class Firewall {
       }
       // A tool still waiting from an earlier session keeps the note it was recorded with.
       const stored = entry ? getOwn(entry.pending, name) : undefined;
+      const pinned = entry ? getOwn(entry.tools, name) : undefined;
       const decision = decideTool({
         name,
         hash,
         legacyHash,
         definition: normalized,
-        pinned: entry ? getOwn(entry.tools, name) : undefined,
+        pinned,
         launchChanged: this.launchChanged || (stored?.hash === hash && stored.launchChanged === true),
         firstUse: this.trustOnFirstUse,
         onNew: this.onNew,
-        // Long names never match, so a hostile name cannot make a pattern with several * slow.
-        expected: name.length <= 256 && this.allowNew.some((re) => re.test(name)),
+        // Only an unpinned tool can use it; names over 256 characters never match.
+        expected: pinned === undefined && name.length <= 256 && this.allowNew.some((pattern) => matchesToolPattern(pattern, name)),
         scan: () => scanTool(this.server, definition, this.rules, this.onRuleError),
       });
       decisions.push(decision);
@@ -472,8 +473,12 @@ export class Firewall {
       if (decision.action === 'pin' && decision.why === 'repin') continue;
       if (decision.action === 'pin') {
         if (decision.why === 'first-use') firstUse++;
-        else this.diag(`${this.label()}: pinned new tool ${quoted(decision.name)} (${decision.why === 'allow-new' ? 'listed with --allow-new' : '--on-new allow'})`);
-        this.audit({ event: decision.why === 'first-use' ? 'pinned' : 'new', tool: decision.name, decision: 'pinned', detail: decision.why });
+        else {
+          const launch = this.launchChanged ? "; the server's command line had also changed since the lockfile recorded it" : '';
+          this.diag(`${this.label()}: pinned new tool ${quoted(decision.name)} (${decision.why === 'allow-new' ? 'listed with --allow-new' : '--on-new allow'})${launch}`);
+        }
+        const detail = decision.why !== 'first-use' && this.launchChanged ? `${decision.why}, command line changed` : decision.why;
+        this.audit({ event: decision.why === 'first-use' ? 'pinned' : 'new', tool: decision.name, decision: 'pinned', detail });
         if (decision.warnings.length > 0) {
           this.reportOnce(`warn|${decision.name}|${decision.hash}`, 'flagged', decision.name, 'allowed',
             `tool ${quoted(decision.name)} allowed with a warning: ${findingsPhrase(decision.warnings)}`, decision.warnings);
@@ -656,10 +661,38 @@ function quoted(name: string): string {
   return `'${safeText(name, 100)}'`;
 }
 
-/** An --allow-new value as a whole-name pattern: * matches any run of characters, ? any one. */
-export function toolPattern(pattern: string): RegExp {
-  const body = [...pattern].map((ch) => (ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\/]/g, '\\$&'))).join('');
-  return new RegExp(`^${body}$`, 's');
+/**
+ * Whether a tool name matches an --allow-new pattern as a whole: * matches
+ * any run of characters, ? exactly one, everything else itself. Greedy
+ * matching with one backtrack point, so the cost is at most name length
+ * times pattern length however many * there are (a backtracking RegExp
+ * could be made to hang by a server choosing the names). Names holding
+ * control characters never match.
+ */
+export function matchesToolPattern(pattern: string, name: string): boolean {
+  if (/[\u0000-\u001f\u007f]/.test(name)) return false;
+  const p = [...pattern];
+  const n = [...name];
+  let i = 0;
+  let j = 0;
+  let star = -1;
+  let resume = 0;
+  while (j < n.length) {
+    if (i < p.length && (p[i] === '?' || (p[i] !== '*' && p[i] === n[j]))) {
+      i++;
+      j++;
+    } else if (i < p.length && p[i] === '*') {
+      star = i++;
+      resume = j;
+    } else if (star !== -1) {
+      i = star + 1;
+      j = ++resume;
+    } else {
+      return false;
+    }
+  }
+  while (i < p.length && p[i] === '*') i++;
+  return i === p.length;
 }
 
 function reasonPhrase(reason: BlockReason): string {

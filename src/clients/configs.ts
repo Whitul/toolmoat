@@ -257,9 +257,13 @@ export function readLaunch(server: Record<string, unknown>): Launch | { error: s
   return { command, args: [...args] };
 }
 
-/** Options of `toolmoat proxy` that take a value, so a value such as "--" is not read as the separator. */
-const PROXY_VALUE_FLAGS = new Set(['--name', '--lock', '--mode', '--on-new', '--audit-log', '--allow-secret']);
-const PROXY_BOOLEAN_FLAGS = new Set(['--no-audit', '--log-args']);
+/**
+ * Options of `toolmoat proxy` that take a value, so a value such as "--" is
+ * not read as the separator. The proxy's own parser uses these sets too, so
+ * a new option cannot make wrapped entries unrecognisable.
+ */
+export const PROXY_VALUE_FLAGS: ReadonlySet<string> = new Set(['--name', '--lock', '--mode', '--on-new', '--allow-new', '--audit-log', '--allow-secret']);
+export const PROXY_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['--no-audit', '--log-args']);
 
 function commandName(command: string): string {
   return path.basename(command.replace(/\\/g, '/')).toLowerCase().replace(/\.(cmd|exe|ps1|bat)$/, '');

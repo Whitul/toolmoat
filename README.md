@@ -76,7 +76,7 @@ Here is what a ClawHavoc-style skill looks like to toolmoat (an inert sample fro
 
 ```text
 $ toolmoat scan clawhavoc-skill
-toolmoat 0.2.0 scanned 2 files in 1 target (clawhavoc-skill) in 92 ms
+toolmoat 0.3.0 scanned 2 files in 1 target (clawhavoc-skill) in 92 ms
 
 skill:clawhavoc-skill (4 findings)
   CRITICAL  TM-OBF-001  Decode-and-execute
@@ -109,7 +109,7 @@ How to fix
 Claude Code:
 
 ```bash
-claude mcp add toolmoat -- npx -y toolmoat@0.2.0 mcp
+claude mcp add toolmoat -- npx -y toolmoat@0.3.0 mcp
 # or, with a global install
 claude mcp add toolmoat -- toolmoat mcp
 ```
@@ -121,7 +121,7 @@ Claude Desktop, Cursor and other clients:
   "mcpServers": {
     "toolmoat": {
       "command": "npx",
-      "args": ["-y", "toolmoat@0.2.0", "mcp"]
+      "args": ["-y", "toolmoat@0.3.0", "mcp"]
     }
   }
 }
@@ -130,7 +130,7 @@ Claude Desktop, Cursor and other clients:
 On native Windows, `npx` is a `.cmd` script, so clients need `cmd /c` to start it:
 
 ```bash
-claude mcp add toolmoat -- cmd /c npx -y toolmoat@0.2.0 mcp
+claude mcp add toolmoat -- cmd /c npx -y toolmoat@0.3.0 mcp
 ```
 
 ```json
@@ -138,7 +138,7 @@ claude mcp add toolmoat -- cmd /c npx -y toolmoat@0.2.0 mcp
   "mcpServers": {
     "toolmoat": {
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "toolmoat@0.2.0", "mcp"]
+      "args": ["/c", "npx", "-y", "toolmoat@0.3.0", "mcp"]
     }
   }
 }
@@ -200,7 +200,7 @@ toolmoat approve demo      # only if you trust the change
 |---|---|---|
 | First time a server starts | Pins every tool (trust on first use). Tools whose description is flagged high or critical are held back. | Pins, warns about flagged tools |
 | A pinned tool's definition changes | Hidden from the model, calls refused until you `approve` | Passed through, warning, recorded as pending |
-| A new tool appears on a pinned server | Held for approval (`--on-new allow` to pin automatically) | Passed through, recorded |
+| A new tool appears on a pinned server | Held for approval (`--on-new allow`, or `--allow-new <tool>` for named tools, pins automatically unless flagged) | Passed through, recorded |
 | A tool call's arguments contain a credential | Refused, with the credential type named | Forwarded, warning |
 | Tool output contains injected instructions | Logged and warned on stderr | Logged and warned |
 
@@ -212,7 +212,7 @@ Tool names, property names and schema keywords such as `type`, `required` and `p
 
 Line endings are unified too. The same server then pins the same on every machine and in every new container, and the tool text in a shared lockfile no longer carries your paths (the server's command line is still recorded as configured). Hostnames and paths are replaced only where they are your machine's own values, so any other change to a definition is still caught. Pins written by toolmoat 0.2 and earlier are converted the first time the server lists the same definition again.
 
-New tools are still held when the server's command line has also changed since the lockfile recorded it (a new `--toolsets` flag, say), and the message and `toolmoat diff` mention the command-line change so you know where to look.
+When a new tool is held or pinned and the server's command line has also changed since the lockfile recorded it (a new `--toolsets` flag, say), the message and `toolmoat diff` mention the command-line change so you know where to look.
 
 The lockfile lives in `~/.toolmoat/lock.json` by default. Pass `--lock ./toolmoat.lock.json` to keep it in a repository so your team shares the same pins. The audit log (`~/.toolmoat/audit/<server>.jsonl`) records which tools were called and what was decided. It does not store argument values unless you pass `--log-args`, and even then secrets are redacted.
 
@@ -229,7 +229,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Whitul/toolmoat@v0.2.0
+      - uses: Whitul/toolmoat@v0.3.0
         with:
           paths: .claude skills .mcp.json
           fail-on: high
@@ -375,7 +375,7 @@ If you already use Snyk, the two work side by side.
 - Static rules catch known techniques. A determined attacker can phrase instructions in ways no pattern list anticipates, so treat a clean scan as "nothing known found", not as proof of safety.
 - The proxy works with stdio MCP servers. Remote (HTTP) servers cannot be wrapped yet.
 - Trust on first use means the first definition a server presents is pinned. Scan or review a server before its first run.
-- A server that builds its tool list from environment variables (tools that only appear once you add a token, say) looks the same as one adding tools on its own, so those tools are held as new. Approve them once with `toolmoat approve`, or list the ones you expect with `--allow-new <tool>` (for example `--allow-new 'issue_*'`): they are then pinned when they appear, with a note on stderr and in the audit log, and only a flagged one is held.
+- A server that builds its tool list from environment variables (tools that only appear once you add a token, say) looks the same as one adding tools on its own, so those tools are held as new. Approve them once with `toolmoat approve`, or list the ones you expect with `--allow-new <tool>` (for example `--allow-new 'issue_*'`): they are then pinned when they appear, with a note on stderr and in the audit log, and only one the scanner flags high or critical is held. That trusts the name and the scanner rather than your review of the definition, so list names, not `*` (which would pin every unflagged new tool). Names over 256 characters or with control characters never match.
 - Pins cover what a server tells the model, not what its code does. A server can keep the same tool descriptions and change its behaviour, so an unchanged pin does not prove an unchanged server.
 - The proxy is not a sandbox. It only sees the MCP messages between your client and the server; the server process still runs with your permissions and can read files or reach the network on its own. Run a server you do not trust in a container or VM as well.
 - The egress guard and secret rules know credential formats, not every secret. A value in an unknown format, or one that is encoded or split up, gets through.

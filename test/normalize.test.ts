@@ -1,10 +1,11 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { splitWrapped } from '../src/clients/configs.js';
 import { renderPending } from '../src/commands/diff.js';
 import { parseProxyArgs } from '../src/commands/proxy.js';
 import { MemoryAudit } from '../src/proxy/audit.js';
 import type { ProxyOptions } from '../src/proxy/firewall.js';
-import { Firewall, toolPattern } from '../src/proxy/firewall.js';
+import { Firewall, matchesToolPattern } from '../src/proxy/firewall.js';
 import { fingerprint, toolDefinition } from '../src/proxy/fingerprint.js';
 import { readLockfile, writeLockfile } from '../src/proxy/lockfile.js';
 import type { VolatileValues } from '../src/proxy/normalize.js';
@@ -228,13 +229,34 @@ describe('firewall: machine-specific values', () => {
     expect(entry.pending.issue_evil?.reason).toBe('flagged');
     expect(entry.pending.other?.reason).toBe('new');
     expect(diags.join('\n')).toContain("pinned new tool 'issue_create' (listed with --allow-new)");
-    expect(toolPattern('a.b*').test('a.bc')).toBe(true);
-    expect(toolPattern('a.b*').test('axbc')).toBe(false);
+    expect(diags.join('\n')).not.toContain('command line');
+
+    // After a command-line change the pin still happens, but says so.
+    const moved = firewall(lockPath, { allowNew: ['late_*'], rules: [flagRule], commandLine: 'npx -y other-server' });
+    listed(moved.fw, [...tools, { name: 'late_one', description: 'Arrives later.' }]);
+    expect(moved.diags.join('\n')).toContain("pinned new tool 'late_one' (listed with --allow-new); the server's command line had also changed");
   });
 
-  it('parses --allow-new for the proxy command', () => {
+  it('matches --allow-new patterns as whole names, in linear time', () => {
+    expect(matchesToolPattern('issue_*', 'issue_create')).toBe(true);
+    expect(matchesToolPattern('issue_*', 'my_issue_create')).toBe(false);
+    expect(matchesToolPattern('a.b*', 'a.bc')).toBe(true);
+    expect(matchesToolPattern('a.b*', 'axbc')).toBe(false);
+    expect(matchesToolPattern('get?', 'get\u{1F600}')).toBe(true);
+    expect(matchesToolPattern('*', '')).toBe(true);
+    expect(matchesToolPattern('Issue_*', 'issue_x')).toBe(false);
+    expect(matchesToolPattern('issue_*', 'issue_\nhello')).toBe(false);
+    const started = performance.now();
+    expect(matchesToolPattern('*_*_*_*_*_*_*_x', '_'.repeat(256))).toBe(false);
+    expect(matchesToolPattern('*****x', 'a'.repeat(256))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it('parses --allow-new for the proxy command and recognises it in wrapped configs', () => {
     expect(parseProxyArgs(['--allow-new', 'issue_*', '--allow-new=close', '--', 'node', 's.mjs']).allowNew).toEqual(['issue_*', 'close']);
     expect(() => parseProxyArgs(['--allow-new', 'a\u0007', '--', 'node'])).toThrow('--allow-new');
+    expect(splitWrapped('node', ['/x/cli.js', 'proxy', '--name', 'gh', '--allow-new', 'issue_*', '--', 'npx', 'srv'])).toEqual(['npx', 'srv']);
+    expect(splitWrapped('npx', ['-y', 'toolmoat@0.3.0', 'proxy', '--allow-new=issue_*', '--', 'node', 'srv.js'])).toEqual(['node', 'srv.js']);
   });
 
   it('notes a changed command line on new tools, on every page and in later sessions, but never on changed ones', () => {

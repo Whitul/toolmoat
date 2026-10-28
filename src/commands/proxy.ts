@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { PROXY_BOOLEAN_FLAGS, PROXY_VALUE_FLAGS } from '../clients/configs.js';
 import { SECRET_PATTERNS } from '../patterns/secrets.js';
 import { defaultLockPath } from '../proxy/lockfile.js';
 import { deriveServerName, fileSafeName, formatCommand } from '../proxy/names.js';
@@ -27,7 +28,8 @@ Options:
   --on-new block|allow   Tools that appear on an already pinned server (default: block)
   --allow-new <tool>     Pin this tool without holding it when it appears later, e.g.
                          one a server only lists once a token is set (repeatable;
-                         * and ? match any characters). Flagged tools are still held.
+                         whole name, case-sensitive; * matches any run of
+                         characters, ? one character). Flagged tools are still held.
   --audit-log <file>     Audit log (default: <toolmoat home>/audit/<name>.jsonl)
   --no-audit             Do not write an audit log
   --log-args             Also log tool-call arguments, with secrets redacted
@@ -61,8 +63,8 @@ export interface ProxyArgs {
   args: string[];
 }
 
-const VALUE_FLAGS = new Set(['--name', '--lock', '--mode', '--on-new', '--allow-new', '--audit-log', '--allow-secret']);
-const BOOLEAN_FLAGS = new Set(['--no-audit', '--log-args', '--help', '-h']);
+const VALUE_FLAGS = PROXY_VALUE_FLAGS;
+const BOOLEAN_FLAGS = new Set([...PROXY_BOOLEAN_FLAGS, '--help', '-h']);
 
 /**
  * Parses proxy options up to `--` (or up to the first non-option word);
