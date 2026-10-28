@@ -24,6 +24,8 @@ export interface ToolInput {
   /** True while the server is being seen for the first time (trust on first use). */
   firstUse: boolean;
   onNew: OnNew;
+  /** The user listed this tool with --allow-new: pin it when it appears, unless it is flagged. */
+  expected?: boolean;
   /** Scans the definition. Called only when the tool does not match its pin. */
   scan: () => Finding[];
 }
@@ -42,7 +44,7 @@ export type ToolDecision =
    * for a pin made from the exact same definition by a version that did not
    * normalize yet, which only rewrites the pin in the current form.
    */
-  | (DecisionBase & { action: 'pin'; why: 'first-use' | 'on-new-allow' | 'repin'; warnings: FindingSummary[] })
+  | (DecisionBase & { action: 'pin'; why: 'first-use' | 'on-new-allow' | 'allow-new' | 'repin'; warnings: FindingSummary[] })
   /** Held for human review. legacyHash lets a pending entry from an older version keep its detection time. */
   | (DecisionBase & { action: 'block'; reason: PendingReason; findings: FindingSummary[]; launchChanged?: boolean; legacyHash?: string });
 
@@ -63,6 +65,7 @@ export function decideTool(input: ToolInput): ToolDecision {
   if (findings.some((f) => isBlocking(f))) return { ...base, action: 'block', reason: 'flagged', findings, ...legacy };
   if (input.firstUse) return { ...base, action: 'pin', why: 'first-use', warnings: findings.filter(isWarning) };
   if (input.onNew === 'allow') return { ...base, action: 'pin', why: 'on-new-allow', warnings: findings.filter(isWarning) };
+  if (input.expected) return { ...base, action: 'pin', why: 'allow-new', warnings: findings.filter(isWarning) };
   // Only new tools get the note: a changed command line can add tools, but it rarely explains a rewritten description.
   return { ...base, action: 'block', reason: 'new', findings, ...legacy, ...(input.launchChanged ? { launchChanged: true } : {}) };
 }

@@ -25,6 +25,9 @@ Options:
   --lock <file>          Lockfile (default: <toolmoat home>/lock.json, ~/.toolmoat or TOOLMOAT_HOME)
   --mode enforce|warn    enforce hides and blocks; warn only reports (default: enforce)
   --on-new block|allow   Tools that appear on an already pinned server (default: block)
+  --allow-new <tool>     Pin this tool without holding it when it appears later, e.g.
+                         one a server only lists once a token is set (repeatable;
+                         * and ? match any characters). Flagged tools are still held.
   --audit-log <file>     Audit log (default: <toolmoat home>/audit/<name>.jsonl)
   --no-audit             Do not write an audit log
   --log-args             Also log tool-call arguments, with secrets redacted
@@ -52,11 +55,13 @@ export interface ProxyArgs {
   noAudit: boolean;
   logArgs: boolean;
   allowSecrets: string[];
+  /** Tool names or * ? patterns that may appear later without being held. */
+  allowNew: string[];
   command?: string;
   args: string[];
 }
 
-const VALUE_FLAGS = new Set(['--name', '--lock', '--mode', '--on-new', '--audit-log', '--allow-secret']);
+const VALUE_FLAGS = new Set(['--name', '--lock', '--mode', '--on-new', '--allow-new', '--audit-log', '--allow-secret']);
 const BOOLEAN_FLAGS = new Set(['--no-audit', '--log-args', '--help', '-h']);
 
 /**
@@ -64,7 +69,7 @@ const BOOLEAN_FLAGS = new Set(['--no-audit', '--log-args', '--help', '-h']);
  * everything after belongs to the server command and is never interpreted.
  */
 export function parseProxyArgs(argv: readonly string[]): ProxyArgs {
-  const out: ProxyArgs = { help: false, mode: 'enforce', onNew: 'block', noAudit: false, logArgs: false, allowSecrets: [], args: [] };
+  const out: ProxyArgs = { help: false, mode: 'enforce', onNew: 'block', noAudit: false, logArgs: false, allowSecrets: [], allowNew: [], args: [] };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i]!;
     if (token === '--' || !token.startsWith('-') || token === '-') {
@@ -107,6 +112,10 @@ function applyValue(out: ProxyArgs, flag: string, value: string): void {
       if (value !== 'block' && value !== 'allow') throw new UsageError(`--on-new must be block or allow, not ${value}`);
       out.onNew = value;
       break;
+    case '--allow-new':
+      if (/[\u0000-\u001f\u007f]/.test(value) || value.length > 200) throw new UsageError('--allow-new must be at most 200 printable characters');
+      out.allowNew.push(value);
+      break;
     case '--audit-log':
       out.auditLog = value;
       break;
@@ -143,6 +152,7 @@ export async function run(argv: string[]): Promise<number> {
     lockPath: path.resolve(parsed.lock ?? defaultLockPath()),
     mode: parsed.mode,
     onNew: parsed.onNew,
+    allowNew: parsed.allowNew,
     allowSecrets: parsed.allowSecrets,
     logArgs: parsed.logArgs,
     command: parsed.command,

@@ -253,6 +253,8 @@ toolmoat proxy [options] -- <command> [args...]
   --lock <file>               Lockfile (default ~/.toolmoat/lock.json)
   --mode enforce|warn         Block or only warn (default enforce)
   --on-new block|allow        What to do with tools that appear later (default block)
+  --allow-new <tool>          Pin this tool when it appears later instead of holding it
+                              (repeatable, * and ? allowed; flagged tools are still held)
   --audit-log <file> | --no-audit
   --log-args                  Log tool arguments (secrets redacted)
   --allow-secret <patternId>  Let one credential type through the egress guard
@@ -373,7 +375,7 @@ If you already use Snyk, the two work side by side.
 - Static rules catch known techniques. A determined attacker can phrase instructions in ways no pattern list anticipates, so treat a clean scan as "nothing known found", not as proof of safety.
 - The proxy works with stdio MCP servers. Remote (HTTP) servers cannot be wrapped yet.
 - Trust on first use means the first definition a server presents is pinned. Scan or review a server before its first run.
-- A server that builds its tool list from environment variables (tools that only appear once you add a token, say) looks the same as one adding tools on its own, so those tools are held as new. Approve them once with `toolmoat approve`, or run that server with `--on-new allow`.
+- A server that builds its tool list from environment variables (tools that only appear once you add a token, say) looks the same as one adding tools on its own, so those tools are held as new. Approve them once with `toolmoat approve`, or list the ones you expect with `--allow-new <tool>` (for example `--allow-new 'issue_*'`): they are then pinned when they appear, with a note on stderr and in the audit log, and only a flagged one is held.
 - Pins cover what a server tells the model, not what its code does. A server can keep the same tool descriptions and change its behaviour, so an unchanged pin does not prove an unchanged server.
 - The proxy is not a sandbox. It only sees the MCP messages between your client and the server; the server process still runs with your permissions and can read files or reach the network on its own. Run a server you do not trust in a container or VM as well.
 - The egress guard and secret rules know credential formats, not every secret. A value in an unknown format, or one that is encoded or split up, gets through.

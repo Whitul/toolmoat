@@ -4,6 +4,7 @@
 
 - The proxy replaces machine-specific values in tool definitions with placeholders before it pins or compares them. That covers your hostname (only when it has a digit, hyphen or dot), your home, working and temp directories, and, in descriptions and titles of servers whose command is docker, podman or nerdctl, 12-character container ids. Line endings are unified too. A server that writes such values into its tool text no longer looks like a rug pull on another machine or in a new container, and the tool text in a shared lockfile no longer carries your paths. Tool names, property names and schema keywords such as `type`, `required` and `pattern` are still pinned exactly. Pins and pending changes from 0.2 and earlier are rewritten in the new form the first time the server lists the same definition again, keeping their original times.
 - New tools held while the server's command line has also changed since the lockfile recorded it say so in the proxy's message and in `toolmoat diff`.
+- `toolmoat proxy --allow-new <tool>` (repeatable, with `*` and `?`): tools a server only lists in some setups, for example once a token is set, are pinned when they appear instead of being held, with a note on stderr and in the audit log. Tools the scanner flags are still held.
 - README: what pinning and the proxy do not cover (pins are not behaviour, the proxy is not a sandbox, the egress guard knows formats rather than every secret, env-built tool lists show up as new tools).
 
 ## 0.2.0

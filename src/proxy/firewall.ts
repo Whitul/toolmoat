@@ -27,6 +27,8 @@ export interface ProxyOptions {
   mode?: Mode;
   /** Default block. */
   onNew?: OnNew;
+  /** Tool names, or patterns with * and ?, pinned without a hold when they appear later. */
+  allowNew?: readonly string[];
   /** Secret pattern ids (see SECRET_PATTERNS) that the egress guard lets through. */
   allowSecrets?: readonly string[];
   /** Rules for scanning tool definitions and tool output. Default: allRules. */
@@ -79,6 +81,7 @@ export class Firewall {
   private readonly lockPath: string;
   private readonly mode: Mode;
   private readonly onNew: OnNew;
+  private readonly allowNew: readonly RegExp[];
   private readonly allowSecrets: ReadonlySet<string>;
   private readonly rules: readonly Rule[];
   private readonly sink: AuditSink | undefined;
@@ -114,6 +117,7 @@ export class Firewall {
     this.lockPath = options.lockPath;
     this.mode = options.mode ?? 'enforce';
     this.onNew = options.onNew ?? 'block';
+    this.allowNew = (options.allowNew ?? []).map(toolPattern);
     this.allowSecrets = new Set(options.allowSecrets ?? []);
     this.rules = options.rules ?? allRules;
     this.sink = options.audit;
@@ -399,6 +403,8 @@ export class Firewall {
         launchChanged: this.launchChanged || (stored?.hash === hash && stored.launchChanged === true),
         firstUse: this.trustOnFirstUse,
         onNew: this.onNew,
+        // Long names never match, so a hostile name cannot make a pattern with several * slow.
+        expected: name.length <= 256 && this.allowNew.some((re) => re.test(name)),
         scan: () => scanTool(this.server, definition, this.rules, this.onRuleError),
       });
       decisions.push(decision);
@@ -466,7 +472,7 @@ export class Firewall {
       if (decision.action === 'pin' && decision.why === 'repin') continue;
       if (decision.action === 'pin') {
         if (decision.why === 'first-use') firstUse++;
-        else this.diag(`${this.label()}: pinned new tool ${quoted(decision.name)} (--on-new allow)`);
+        else this.diag(`${this.label()}: pinned new tool ${quoted(decision.name)} (${decision.why === 'allow-new' ? 'listed with --allow-new' : '--on-new allow'})`);
         this.audit({ event: decision.why === 'first-use' ? 'pinned' : 'new', tool: decision.name, decision: 'pinned', detail: decision.why });
         if (decision.warnings.length > 0) {
           this.reportOnce(`warn|${decision.name}|${decision.hash}`, 'flagged', decision.name, 'allowed',
@@ -648,6 +654,12 @@ function toolError(id: unknown, text: string): JsonRpcMessage {
 
 function quoted(name: string): string {
   return `'${safeText(name, 100)}'`;
+}
+
+/** An --allow-new value as a whole-name pattern: * matches any run of characters, ? any one. */
+export function toolPattern(pattern: string): RegExp {
+  const body = [...pattern].map((ch) => (ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\/]/g, '\\$&'))).join('');
+  return new RegExp(`^${body}$`, 's');
 }
 
 function reasonPhrase(reason: BlockReason): string {
