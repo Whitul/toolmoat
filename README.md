@@ -363,6 +363,9 @@ If you already use Snyk, the two work side by side.
 - Static rules catch known techniques. A determined attacker can phrase instructions in ways no pattern list anticipates, so treat a clean scan as "nothing known found", not as proof of safety.
 - The proxy works with stdio MCP servers. Remote (HTTP) servers cannot be wrapped yet.
 - Trust on first use means the first definition a server presents is pinned. Scan or review a server before its first run.
+- Pins cover what a server tells the model, not what its code does. A server can keep the same tool descriptions and change its behaviour, so an unchanged pin does not prove an unchanged server.
+- The proxy is not a sandbox. It only sees the MCP messages between your client and the server; the server process still runs with your permissions and can read files or reach the network on its own. Run a server you do not trust in a container or VM as well.
+- The egress guard and secret rules know credential formats, not every secret. A value in an unknown format, or one that is encoded or split up, gets through.
 - Instructions a skill fetches from the internet at runtime cannot be checked ahead of time. toolmoat flags skills that do this (`TM-PI-008`).
 
 ## Development
