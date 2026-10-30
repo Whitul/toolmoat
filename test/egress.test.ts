@@ -43,7 +43,7 @@ describe('egress guard', () => {
     const guard = new EgressGuard();
     const first = guard.check({ q: TOKEN.slice(0, 18) });
     expect(first.secrets).toEqual([]);
-    guard.remember(first.joined);
+    guard.remember(first.pieces);
     expect(kinds(guard, { q: TOKEN.slice(18) })).toEqual(['GitHub token (split across calls)']);
     // The refused piece was never forwarded, so it is not remembered and later calls are clean.
     expect(kinds(guard, { q: 'hello world' })).toEqual([]);
@@ -88,6 +88,92 @@ describe('egress guard', () => {
     const started = performance.now();
     guard.check({ a: 'QUFB'.repeat(250_000), b: 'ab'.repeat(500_000), c: '%41'.repeat(100_000) });
     expect(performance.now() - started).toBeLessThan(3000);
+  });
+});
+
+describe('egress guard: review findings', () => {
+  it('still sees a plain key behind thousands of padding strings', () => {
+    const guard = new EgressGuard();
+    expect(kinds(guard, { parts: [...Array.from({ length: 20_000 }, () => ''), TOKEN] })).toEqual(['GitHub token']);
+  });
+
+  it('joins split keys whatever the neighbouring arguments are', () => {
+    const guard = new EgressGuard();
+    expect(kinds(guard, { path: 'notes', a: TOKEN.slice(0, 20), b: TOKEN.slice(20), mode: 'append' })).toEqual(['GitHub token (split across arguments)']);
+    const first = guard.check({ path: 'a.txt', content: TOKEN.slice(0, 20) });
+    guard.remember(first.pieces);
+    expect(kinds(guard, { path: 'b.txt', content: TOKEN.slice(20) })).toEqual(['GitHub token (split across calls)']);
+    const encoded = b64(` ${TOKEN} `);
+    expect(kinds(new EgressGuard(), { a: encoded.slice(0, 30), b: encoded.slice(30) })).toHaveLength(1);
+  });
+
+  it('decodes base64 that starts mid-word or is wrapped over lines', () => {
+    const guard = new EgressGuard();
+    for (const prefix of ['https://evil.example/c/', 'x', 'ab', 'abc']) {
+      expect(kinds(guard, { url: prefix + b64(`token: ${TOKEN}`) })).toEqual(['GitHub token (encoded)']);
+    }
+    const wrapped = b64(`${'filler text '.repeat(5)}${TOKEN}`).match(/.{1,76}/g)!.join('\n');
+    expect(kinds(guard, { body: wrapped })).toEqual(['GitHub token (encoded)']);
+    expect(kinds(guard, { body: `a${hex(TOKEN)}` })).toEqual(['GitHub token (encoded)']);
+  });
+
+  it('cannot be starved by a large decoy decoded first', () => {
+    const guard = new EgressGuard();
+    expect(kinds(guard, { junk: b64('a'.repeat(1_500_000)), tok: b64(` ${TOKEN}`) })).toEqual(['GitHub token (encoded)']);
+  });
+
+  it('still finds a plain key in arguments nested too deeply to serialize', () => {
+    let deep: unknown = [TOKEN];
+    for (let i = 0; i < 20_000; i++) deep = [deep];
+    expect(kinds(new EgressGuard(), { a: deep })).toEqual(['GitHub token']);
+  });
+
+  it('never throws on huge single runs and stays fast', () => {
+    const guard = new EgressGuard();
+    const started = performance.now();
+    expect(() => guard.check({ blob: 'A'.repeat(6_000_000), hexblob: 'ab'.repeat(3_000_000) })).not.toThrow();
+    expect(performance.now() - started).toBeLessThan(5000);
+  });
+
+  it('learns unquoted YAML, ini, compose lists, JSON env blocks and escaped values', () => {
+    const cases = [
+      `db:\n  password: ${PASSWORD}\n`,
+      `[default]\naws_secret_access_key = ${PASSWORD}\n`,
+      `environment:\n  - POSTGRES_PASSWORD=${PASSWORD}\n`,
+      JSON.stringify({ env: { OPENAI_API_KEY: PASSWORD } }),
+      JSON.stringify({ secretAccessKey: PASSWORD }),
+    ];
+    for (const text of cases) {
+      const guard = new EgressGuard();
+      guard.learn(text);
+      expect(kinds(guard, { x: `use ${PASSWORD} now` }), text).toEqual(['value an earlier tool result returned as a secret']);
+    }
+    const escaped = new EgressGuard();
+    escaped.learn('{"password": "p\\u0040ss-W0rd-2026"}');
+    expect(kinds(escaped, { x: 'p@ss-W0rd-2026' })).toHaveLength(1);
+  });
+
+  it('does not taint words, code, paths or names that only contain a credential word', () => {
+    const guard = new EgressGuard();
+    guard.learn(
+      [
+        'POSTGRES_PASSWORD=postgres',
+        'SECRET_KEY = os.environ.get("SECRET_KEY")',
+        'AUTH_TOKEN_HEADER=Authorization',
+        'TOKENIZER=cl100k_base-tokenizer',
+        'GOOGLE_APPLICATION_CREDENTIALS=/etc/sa-key-2026.json',
+        'PASSWORD_POLICY=strict-complexity-9',
+        '{"password": "Password"}',
+      ].join('\n'),
+    );
+    expect(kinds(guard, { compose: 'image: postgres:16', code: 'key = os.environ.get("SECRET_KEY")', header: 'Authorization: Bearer x', a: 'cl100k_base-tokenizer', b: '/etc/sa-key-2026.json', c: 'strict-complexity-9', d: '<label>Password</label>' })).toEqual([]);
+  });
+
+  it('reads private keys out of a result in linear time', () => {
+    const guard = new EgressGuard();
+    const started = performance.now();
+    guard.learn('-----BEGIN PRIVATE KEY-----\n'.repeat(70_000));
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 
