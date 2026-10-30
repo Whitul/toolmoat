@@ -1,11 +1,15 @@
 import path from 'node:path';
 import { PROXY_BOOLEAN_FLAGS, PROXY_VALUE_FLAGS } from '../clients/configs.js';
 import { SECRET_PATTERNS } from '../patterns/secrets.js';
+import { TAINT_ID } from '../proxy/egress.js';
 import { defaultLockPath } from '../proxy/lockfile.js';
 import { deriveServerName, fileSafeName, formatCommand } from '../proxy/names.js';
 import type { Mode, OnNew } from '../proxy/policy.js';
 import { runProxy } from '../proxy/proxy.js';
 import { toolmoatHome } from '../util/paths.js';
+
+/** What --allow-secret accepts: every credential pattern, plus values tainted by a tool result. */
+const ALLOWABLE_SECRETS: readonly string[] = [...SECRET_PATTERNS.map((p) => p.id), TAINT_ID];
 
 export const help = `Usage: toolmoat proxy [options] -- <command> [args...]
 
@@ -34,7 +38,8 @@ Options:
   --no-audit             Do not write an audit log
   --log-args             Also log tool-call arguments, with secrets redacted
   --allow-secret <id>    Let one credential type through the egress guard (repeatable).
-                         Ids: ${SECRET_PATTERNS.map((p) => p.id).join(', ')}
+                         Ids: ${ALLOWABLE_SECRETS.join(', ')}
+                         (${TAINT_ID}: values an earlier tool result returned as a secret)
   -h, --help             Show this help (only before --)
 
 Examples:
@@ -122,8 +127,8 @@ function applyValue(out: ProxyArgs, flag: string, value: string): void {
       out.auditLog = value;
       break;
     case '--allow-secret':
-      if (!SECRET_PATTERNS.some((p) => p.id === value)) {
-        throw new UsageError(`unknown secret pattern '${value}' for --allow-secret; known ids: ${SECRET_PATTERNS.map((p) => p.id).join(', ')}`);
+      if (!ALLOWABLE_SECRETS.includes(value)) {
+        throw new UsageError(`unknown secret pattern '${value}' for --allow-secret; known ids: ${ALLOWABLE_SECRETS.join(', ')}`);
       }
       out.allowSecrets.push(value);
       break;

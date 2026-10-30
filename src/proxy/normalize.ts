@@ -80,7 +80,9 @@ export function makeNormalizer(values: VolatileValues, platform: NodeJS.Platform
   const replacements = [...pathReplacements(values, platform), ...hostnameReplacements(values.hostname)];
   const normalize = (text: string, key: string): string => {
     if (STRUCTURAL_KEYS.has(key)) return text;
-    let out = text.includes('\r') ? text.replace(/\r\n?/g, '\n') : text;
+    // NFC only folds canonically equivalent sequences, which render identically; NFKC would fold look-alikes too.
+    const nfc = text.normalize('NFC');
+    let out = nfc.includes('\r') ? nfc.replace(/\r\n?/g, '\n') : nfc;
     for (const { re, placeholder } of replacements) out = out.replace(re, placeholder);
     if (values.container && PROSE_KEYS.has(key)) out = out.replace(CONTAINER_ID, (id) => (/[a-f]/.test(id) ? '{{container}}' : id));
     if (!out.includes('{{')) return out;

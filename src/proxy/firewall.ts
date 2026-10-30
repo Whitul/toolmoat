@@ -1,10 +1,11 @@
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
-import { findSecrets, redactSecrets } from '../patterns/secrets.js';
+import { redactSecrets } from '../patterns/secrets.js';
 import { allRules } from '../rules/index.js';
 import type { Finding, Rule, ScanFile } from '../types.js';
 import type { AuditInput, AuditSink, SecretSummary } from './audit.js';
 import { loggableArgs } from './audit.js';
 import { getOwn } from './canonical.js';
+import { EgressGuard } from './egress.js';
 import type { ToolDefinition } from './fingerprint.js';
 import { fingerprint, scanServerInstructions, scanTool, scanToolOutput, toolDefinition } from './fingerprint.js';
 import type { JsonRpcMessage } from './framing.js';
@@ -29,7 +30,7 @@ export interface ProxyOptions {
   onNew?: OnNew;
   /** Tool names, or patterns with * and ?, pinned without a hold when they appear later. */
   allowNew?: readonly string[];
-  /** Secret pattern ids (see SECRET_PATTERNS) that the egress guard lets through. */
+  /** Secret pattern ids (see SECRET_PATTERNS, plus "tool-result" for tainted values) that the egress guard lets through. */
   allowSecrets?: readonly string[];
   /** Rules for scanning tool definitions and tool output. Default: allRules. */
   rules?: readonly Rule[];
@@ -82,7 +83,7 @@ export class Firewall {
   private readonly mode: Mode;
   private readonly onNew: OnNew;
   private readonly allowNew: readonly string[];
-  private readonly allowSecrets: ReadonlySet<string>;
+  private readonly egress: EgressGuard;
   private readonly rules: readonly Rule[];
   private readonly sink: AuditSink | undefined;
   private readonly logArgs: boolean;
@@ -118,7 +119,7 @@ export class Firewall {
     this.mode = options.mode ?? 'enforce';
     this.onNew = options.onNew ?? 'block';
     this.allowNew = [...(options.allowNew ?? [])];
-    this.allowSecrets = new Set(options.allowSecrets ?? []);
+    this.egress = new EgressGuard(options.allowSecrets ?? []);
     this.rules = options.rules ?? allRules;
     this.sink = options.audit;
     this.logArgs = options.logArgs ?? false;
@@ -289,7 +290,7 @@ export class Firewall {
     }
     if (block) this.diag(`${this.label()}: warn mode, forwarding a call to ${quoted(tool)} although ${reasonPhrase(block.reason)}`);
 
-    const secrets = this.leakedSecrets(argsJson);
+    const { secrets, joined } = this.egress.check(params.arguments ?? {});
     if (secrets.length > 0) {
       this.audit({ ...base, event: 'secret', decision: enforce ? 'blocked' : 'warned', findings: secrets });
       const kinds = secrets.map((s) => s.name).join(', ');
@@ -297,6 +298,7 @@ export class Firewall {
       if (enforce) return toolError(message.id, secretCallText(this.server, tool, secrets));
     }
 
+    this.egress.remember(joined);
     track(this.callRequests, idKey(message.id), tool);
     this.audit({ ...base, decision: block || secrets.length > 0 ? 'warned' : 'forwarded' });
     return undefined;
@@ -307,14 +309,6 @@ export class Firewall {
     if (held) return held;
     const known = this.listed ? this.allowed.has(tool) : this.startEntry !== undefined && getOwn(this.startEntry.tools, tool) !== undefined;
     return known ? undefined : { reason: 'unlisted', findings: [] };
-  }
-
-  private leakedSecrets(argsJson: string): SecretSummary[] {
-    const out = new Map<string, SecretSummary>();
-    for (const hit of findSecrets(argsJson)) {
-      if (!this.allowSecrets.has(hit.patternId)) out.set(hit.patternId, { patternId: hit.patternId, name: hit.name });
-    }
-    return [...out.values()];
   }
 
   private onServerMessage(message: JsonRpcMessage): JsonRpcMessage | undefined {
@@ -328,7 +322,10 @@ export class Firewall {
       const tool = this.callRequests.get(key);
       if (tool !== undefined) {
         this.callRequests.delete(key);
-        this.scheduleOutputScan(tool, message.result ?? errorAsResult(message.error));
+        const text = outputText(message.result ?? errorAsResult(message.error));
+        // Before the result is forwarded, so the model cannot send a secret it carries in its very next call.
+        this.egress.learn(text);
+        this.scheduleOutputScan(tool, text);
         return undefined;
       }
       if (this.initRequests.delete(key)) {
@@ -506,9 +503,9 @@ export class Firewall {
     this.diag(`${this.label()}: ${message}`);
   }
 
-  private scheduleOutputScan(tool: string, result: unknown): void {
+  private scheduleOutputScan(tool: string, text: string): void {
     this.scheduleScan(
-      outputText(result),
+      text,
       (slice) => scanToolOutput(this.server, tool, slice, this.rules, this.onRuleError),
       (findings) => {
         this.audit({ event: 'injection', tool, decision: 'warned', findings });

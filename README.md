@@ -201,7 +201,7 @@ toolmoat approve demo      # only if you trust the change
 | First time a server starts | Pins every tool (trust on first use). Tools whose description is flagged high or critical are held back. | Pins, warns about flagged tools |
 | A pinned tool's definition changes | Hidden from the model, calls refused until you `approve` | Passed through, warning, recorded as pending |
 | A new tool appears on a pinned server | Held for approval (`--on-new allow`, or `--allow-new <tool>` for named tools, pins automatically unless flagged) | Passed through, recorded |
-| A tool call's arguments contain a credential | Refused, with the credential type named | Forwarded, warning |
+| A tool call's arguments contain a credential (also URL-, base64- or hex-encoded, inside JSON in a string, split across arguments or consecutive calls, or a secret an earlier result of this server returned) | Refused, with the credential type named | Forwarded, warning |
 | Tool output contains injected instructions | Logged and warned on stderr | Logged and warned |
 
 Tool names, property names and schema keywords such as `type`, `required` and `pattern` are pinned exactly. Some servers write machine-specific values into their tool text, such as the hostname or a home directory. So before a definition is pinned or compared, toolmoat replaces these values with placeholders like `{{hostname}}` and `{{home}}` in the rest of the definition's text (descriptions, titles, defaults):
@@ -258,6 +258,7 @@ toolmoat proxy [options] -- <command> [args...]
   --audit-log <file> | --no-audit
   --log-args                  Log tool arguments (secrets redacted)
   --allow-secret <patternId>  Let one credential type through the egress guard
+                              (tool-result: secrets an earlier tool result returned)
 
 toolmoat wrap   [--client <name>] [--config <file>] [--dry-run]
 toolmoat unwrap [--client <name>] [--config <file>] [--dry-run]
@@ -378,7 +379,7 @@ If you already use Snyk, the two work side by side.
 - A server that builds its tool list from environment variables (tools that only appear once you add a token, say) looks the same as one adding tools on its own, so those tools are held as new. Approve them once with `toolmoat approve`, or list the ones you expect with `--allow-new <tool>` (for example `--allow-new 'issue_*'`): they are then pinned when they appear, with a note on stderr and in the audit log, and only one the scanner flags high or critical is held. That trusts the name and the scanner rather than your review of the definition, so list names, not `*` (which would pin every unflagged new tool). Names over 256 characters or with control characters never match.
 - Pins cover what a server tells the model, not what its code does. A server can keep the same tool descriptions and change its behaviour, so an unchanged pin does not prove an unchanged server.
 - The proxy is not a sandbox. It only sees the MCP messages between your client and the server; the server process still runs with your permissions and can read files or reach the network on its own. Run a server you do not trust in a container or VM as well.
-- The egress guard and secret rules know credential formats, not every secret. A value in an unknown format, or one that is encoded or split up, gets through.
+- The egress guard is a speed bump, not a control. It knows credential formats and the secrets earlier results of the same server returned (values of credential-named `.env`, JSON and YAML entries, and private key material); it decodes URL, base64 and hex encoding and joins keys split across arguments or the last few calls. A value transformed some other way (encrypted, reversed, spread over many calls), or a key read through one server and sent through another, still gets through, because each server runs behind its own proxy. The scanner's secret rules know credential formats only.
 - Instructions a skill fetches from the internet at runtime cannot be checked ahead of time. toolmoat flags skills that do this (`TM-PI-008`).
 
 ## Development
